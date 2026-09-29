@@ -1,0 +1,6 @@
+# CIFAR10 / ResNet18 / standard (CE) training  -- CoRP setting of the paper: evr 0.8, M 2048
+_base_: base.yaml
+data:
+  train_mode: ce
+model:
+  exp_var_ratio: 0.8

@@ -1,0 +1,6 @@
+# CIFAR10 / ResNet18 / SupCon training  -- CoRP setting of the paper: evr 0.7, M 2048
+_base_: base.yaml
+data:
+  train_mode: supcon
+model:
+  exp_var_ratio: 0.7

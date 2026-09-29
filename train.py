@@ -1,0 +1,45 @@
+"""Fit multi-kernel models on ID train features and save checkpoints.
+
+    python train.py --config configs/c10_r18_ce.yaml
+    python train.py --config configs/c10_r18_ce.yaml --set kernel.heads=[1,5,10] run.seeds=[0]
+"""
+import sys
+import time
+import argparse
+
+from src.config import load_config, run_name
+from src.data import load_id_train, split_calib
+from src.kernels import gamma_schedule
+from src.model import MultiKernelOOD
+from src.utils import set_seed, Tee, ckpt_path, save_pickle
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--config', required=True)
+    ap.add_argument('--set', nargs='*', default=[], help='overrides, e.g. kernel.M=4096')
+    a = ap.parse_args()
+    cfg = load_config(a.config, a.set)
+    name = run_name(cfg)
+    sys.stdout = Tee(f'{cfg.run.logs_dir}/{name}/train.log')
+    print(f'\n==== train: {name} ====')
+
+    x_all = load_id_train(cfg)
+    print(f'ID train {x_all.shape}')
+    t0 = time.time()
+    for seed in cfg.run.seeds:
+        rng = set_seed(seed)
+        x_fit, x_cal = split_calib(x_all, cfg.data.calib_holdout, rng)
+        for H in cfg.kernel.heads:
+            gammas = gamma_schedule(H, cfg.kernel, x_fit, rng)
+            model = MultiKernelOOD(gammas, cfg, x_fit.shape[1], rng).fit(x_fit, x_cal)
+            info = model.info()
+            print(f"[seed {seed}] H={H:2d} gammas={[round(g, 4) for g in info['gammas']]} "
+                  f"q1={info['q1']} concat={info['concat_dim']} q2={info['q2']}  ({time.time() - t0:.0f}s)")
+            save_pickle({'model': model, 'cfg': dict(cfg), 'seed': seed, 'H': H},
+                        ckpt_path(cfg, name, seed, H))
+    print(f'checkpoints -> {cfg.run.ckpt_dir}/{name}/')
+
+
+if __name__ == '__main__':
+    main()

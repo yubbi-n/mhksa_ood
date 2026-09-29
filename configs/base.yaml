@@ -1,0 +1,32 @@
+# ---------------- data ----------------
+data:
+  cache_dir: ./cache            # ood-kernel-pca feature cache (feat_extract.py output)
+  in_data: CIFAR10
+  arch: R18
+  train_mode: ce                # ce | supcon  -> cache/<in_data>/<arch>/<train_mode>/
+  out_datasets: [SVHN, LSUN, iSUN, Texture, places365]
+  calib_holdout: 0.0            # fraction of ID train kept out of PCA fit (ensemble reference); 0 = use train errors
+
+# ---------------- kernel / heads ----------------
+kernel:
+  heads: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+  gamma_min: 0.3
+  gamma_max: 3.0
+  gamma_spacing: log            # log | linear
+  median_mode: half             # H=1: half -> gamma = 1/(2 med^2), plain -> 1/med^2
+  median_subsample: 5000
+  M: 2048                       # RFF dim per head
+
+# ---------------- model ----------------
+model:
+  exp_var_ratio: 0.8            # stage-1 (per-head PCA)
+  exp_var_ratio2: null          # stage-2 (MHKSA concat PCA); null = same as stage-1
+  ens_norm: percentile          # percentile | zscore
+  ens_weights: equal            # equal (only option for now)
+
+# ---------------- run ----------------
+run:
+  seeds: [0, 1, 2, 3, 4]
+  ckpt_dir: ./checkpoints
+  logs_dir: ./logs
+  tag: ''
