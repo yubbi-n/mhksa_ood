@@ -51,7 +51,7 @@ def main():
             model = load_pickle(ckpt_path(cfg, name, seed, H))['model']
             info = model.info()
             gammas = info['gammas']
-            print(f"\n[seed {seed}] H={H} gammas={[round(g, 4) for g in gammas]} q1={info['q1']} q2={info['q2']}")
+            print(f"\n[seed {seed}] H={H} gammas={[round(g, 4) for g in gammas]} q1={info['q1']} | MHKSA q1={info['q1_mh']} q2={info['q2']}")
 
             s_in = model.scores(f_in)
             s_out = {n: model.scores(x) for n, x in f_out.items()}

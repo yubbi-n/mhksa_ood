@@ -4,3 +4,4 @@ data:
   train_mode: ce
 model:
   exp_var_ratio: 0.8
+  mhksa_evr1: 0.9               # 0.9 x 0.9 = 0.81 ~ 0.8

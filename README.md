@@ -4,9 +4,9 @@ Multi-kernel (multi-head RFF) extensions of CoRP (Kernel PCA for OOD detection) 
 
 ```
 configs/
-  base.yaml              all defaults (heads 1~10, gamma 0.3~3 log, M 2048, seeds 0~4)
-  c10_r18_ce.yaml        CE      : evr 0.8
-  c10_r18_supcon.yaml    SupCon  : evr 0.7
+  base.yaml              all defaults (heads 1~10, gamma = gamma_med x [0.3, 3] log, M 2048, seeds 0~4)
+  c10_r18_ce.yaml        CE      : evr 0.8, MHKSA 0.9 x 0.9
+  c10_r18_supcon.yaml    SupCon  : evr 0.7, MHKSA 0.84 x 0.84
 src/
   config.py      YAML (_base_ inheritance) + --set overrides
   data.py        cached feature loading, cosine normalisation, calib split
@@ -28,7 +28,7 @@ python evaluate.py --config configs/c10_r18_ce.yaml --set data.cache_dir=/path/t
 # or
 bash scripts/run_c10.sh
 ```
-Overrides: `--set kernel.heads=[1,5,10] run.seeds=[0] kernel.gamma_spacing=linear model.exp_var_ratio2=0.9`
+Overrides: `--set kernel.heads=[1,5,10] run.seeds=[0] kernel.gamma_spacing=linear model.mhksa_evr1=0.95`
 
 ## Methods
 | name | description |
@@ -40,4 +40,8 @@ Overrides: `--set kernel.heads=[1,5,10] run.seeds=[0] kernel.gamma_spacing=linea
 | `best_head_loo` | [2-variant] head chosen on the other OOD sets (fair) |
 | `CoRP_Ens_percentile` | [3] per-head error → ID percentile → equal-weight sum |
 
-Gamma: H = 1 → median heuristic (γ = 1/(2·med²)); H ≥ 2 → H values over [gamma_min, gamma_max].
+Gamma (senior's MHKSA): γ_h = γ_med · m_h, γ_med = 1/(2·med²) from the median heuristic.
+H = 1 → m = 1 (pure median heuristic); H ≥ 2 → m_h over [mult_min, mult_max] = [0.3, 3] (log-spaced).
+
+PCA ratios: `exp_var_ratio` (0.8 CE / 0.7 SupCon) for single head / best head / ensemble (= CoRP).
+MHKSA uses `mhksa_evr1`, `mhksa_evr2` (0.9 / 0.9 CE, 0.84 / 0.84 SupCon) so that stage1 × stage2 ≈ exp_var_ratio.

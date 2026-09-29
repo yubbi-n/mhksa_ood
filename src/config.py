@@ -50,8 +50,8 @@ def load_config(path, overrides=()):
         for p in parents:
             d = d.setdefault(p, {})
         d[last] = yaml.safe_load(val)
-    if cfg['model'].get('exp_var_ratio2') is None:
-        cfg['model']['exp_var_ratio2'] = cfg['model']['exp_var_ratio']
+    if cfg['model'].get('mhksa_evr2') is None:
+        cfg['model']['mhksa_evr2'] = cfg['model']['mhksa_evr1']
     return _to_cfg(cfg)
 
 
@@ -62,5 +62,5 @@ def _to_cfg(d):
 def run_name(cfg):
     k, m = cfg.kernel, cfg.model
     return (f"{cfg.data.in_data}-{cfg.data.arch}-{cfg.data.train_mode}"
-            f"-evr{m.exp_var_ratio}_{m.exp_var_ratio2}-M{k.M}"
-            f"-g{k.gamma_min}_{k.gamma_max}{k.gamma_spacing}{cfg.run.tag}")
+            f"-evr{m.exp_var_ratio}-mh{m.mhksa_evr1}_{m.mhksa_evr2}-M{k.M}"
+            f"-m{k.mult_min}_{k.mult_max}{k.gamma_spacing}{cfg.run.tag}")

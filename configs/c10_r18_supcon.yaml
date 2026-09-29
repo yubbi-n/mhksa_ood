@@ -4,3 +4,4 @@ data:
   train_mode: supcon
 model:
   exp_var_ratio: 0.7
+  mhksa_evr1: 0.84              # 0.84 x 0.84 = 0.71 ~ 0.7

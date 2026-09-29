@@ -27,11 +27,10 @@ def median_heuristic(x, n_sub=5000, mode='half', rng=None):
     return gamma, med
 
 
-def gamma_schedule(H, kcfg, x_train=None, rng=None):
-    """H = 1 -> median heuristic ; H >= 2 -> H values spread over [gamma_min, gamma_max]."""
+def gamma_schedule(H, kcfg, x_train, rng=None):
+    """gamma_h = gamma_med * m_h.  H = 1 -> m = 1 (median heuristic) ; H >= 2 -> m_h over [mult_min, mult_max]."""
+    g_med, _ = median_heuristic(x_train, kcfg.median_subsample, kcfg.median_mode, rng)
     if H == 1:
-        g, _ = median_heuristic(x_train, kcfg.median_subsample, kcfg.median_mode, rng)
-        return np.array([g])
-    if kcfg.gamma_spacing == 'log':
-        return np.geomspace(kcfg.gamma_min, kcfg.gamma_max, H)
-    return np.linspace(kcfg.gamma_min, kcfg.gamma_max, H)
+        return np.array([g_med])
+    space = np.geomspace if kcfg.gamma_spacing == 'log' else np.linspace
+    return g_med * space(kcfg.mult_min, kcfg.mult_max, H)

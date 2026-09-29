@@ -11,4 +11,4 @@ for CFG in configs/c10_r18_ce.yaml configs/c10_r18_supcon.yaml; do
 done
 
 # gamma range search later, e.g.
-#   bash scripts/run_c10.sh kernel.gamma_min=0.5 kernel.gamma_max=5 run.tag=_range2
+#   bash scripts/run_c10.sh kernel.mult_min=0.5 kernel.mult_max=5

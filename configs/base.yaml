@@ -10,17 +10,22 @@ data:
 # ---------------- kernel / heads ----------------
 kernel:
   heads: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-  gamma_min: 0.3
-  gamma_max: 3.0
-  gamma_spacing: log            # log | linear
-  median_mode: half             # H=1: half -> gamma = 1/(2 med^2), plain -> 1/med^2
+  # gamma_h = gamma_med * m_h (senior's MHKSA): gamma_med from the median heuristic,
+  # m_h spread over [mult_min, mult_max]. H = 1 -> m = 1 (pure median heuristic).
+  mult_min: 0.3
+  mult_max: 3.0
+  gamma_spacing: log            # log | linear  (spacing of m_h)
+  median_mode: half             # half -> gamma_med = 1/(2 med^2), plain -> 1/med^2
   median_subsample: 5000
   M: 2048                       # RFF dim per head
 
 # ---------------- model ----------------
 model:
-  exp_var_ratio: 0.8            # stage-1 (per-head PCA)
-  exp_var_ratio2: null          # stage-2 (MHKSA concat PCA); null = same as stage-1
+  exp_var_ratio: 0.8            # per-head PCA for single head / best head / ensemble (= CoRP)
+  # MHKSA has its own per-stage ratio so that stage1 x stage2 ~= exp_var_ratio
+  # (0.9 x 0.9 = 0.81 ~ 0.8). null = same as mhksa_evr1.
+  mhksa_evr1: 0.9               # MHKSA stage 1 (per-head PCA)
+  mhksa_evr2: null              # MHKSA stage 2 (concat PCA)
   ens_norm: percentile          # percentile | zscore
   ens_weights: equal            # equal (only option for now)
 

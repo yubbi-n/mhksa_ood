@@ -39,7 +39,7 @@ def main():
             model = MultiKernelOOD(gammas, cfg, x_fit.shape[1], rng_h).fit(x_fit, x_cal)
             info = model.info()
             print(f"[seed {seed}] H={H:2d} gammas={[round(g, 4) for g in info['gammas']]} "
-                  f"q1={info['q1']} concat={info['concat_dim']} q2={info['q2']}  ({time.time() - t0:.0f}s)")
+                  f"q1={info['q1']} | MHKSA q1={info['q1_mh']} concat={info['concat_dim']} q2={info['q2']}  ({time.time() - t0:.0f}s)")
             save_pickle({'model': model, 'cfg': dict(cfg), 'seed': seed, 'H': H},
                         ckpt_path(cfg, name, seed, H))
     print(f'checkpoints -> {cfg.run.ckpt_dir}/{name}/')
