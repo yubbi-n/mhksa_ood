@@ -14,7 +14,7 @@ import numpy as np
 
 from src.config import load_config, run_name
 from src.data import load_eval
-from src.metrics import evaluate_all
+from src.metrics import evaluate_all, METRICS_SOURCE
 from src.selection import best_head_oracle, best_head_loo
 from src.utils import Tee, ckpt_path, load_pickle, write_csv
 
@@ -33,7 +33,7 @@ def main():
     cfg = load_config(a.config, a.set)
     name = run_name(cfg)
     sys.stdout = Tee(f'{cfg.run.logs_dir}/{name}/eval.log')
-    print(f'\n==== eval: {name} ====  (FPR95 / AUROC, %)')
+    print(f'\n==== eval: {name} ====  (FPR95 / AUROC, %)  metrics: {METRICS_SOURCE}')
 
     f_in, f_out = load_eval(cfg)
     oods = list(f_out)

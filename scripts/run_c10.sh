@@ -1,5 +1,5 @@
 #!/bin/bash
-# Run from the multihead_kpca/ folder.
+# Run from the repo root.
 # FEAT_CACHE : ood-kernel-pca feature cache,  KPCA_REPO : ood-kernel-pca root (for metrics.py)
 FEAT_CACHE=${FEAT_CACHE:-../ood-kernel-pca/cache}
 KPCA_REPO=${KPCA_REPO:-../ood-kernel-pca}

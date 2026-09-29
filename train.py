@@ -7,6 +7,8 @@ import sys
 import time
 import argparse
 
+import numpy as np
+
 from src.config import load_config, run_name
 from src.data import load_id_train, split_calib
 from src.kernels import gamma_schedule
@@ -31,8 +33,10 @@ def main():
         rng = set_seed(seed)
         x_fit, x_cal = split_calib(x_all, cfg.data.calib_holdout, rng)
         for H in cfg.kernel.heads:
-            gammas = gamma_schedule(H, cfg.kernel, x_fit, rng)
-            model = MultiKernelOOD(gammas, cfg, x_fit.shape[1], rng).fit(x_fit, x_cal)
+            # own RNG per (seed, H): results for a given H do not depend on which other H's are run
+            rng_h = np.random.RandomState([seed, H])
+            gammas = gamma_schedule(H, cfg.kernel, x_fit, rng_h)
+            model = MultiKernelOOD(gammas, cfg, x_fit.shape[1], rng_h).fit(x_fit, x_cal)
             info = model.info()
             print(f"[seed {seed}] H={H:2d} gammas={[round(g, 4) for g in info['gammas']]} "
                   f"q1={info['q1']} concat={info['concat_dim']} q2={info['q2']}  ({time.time() - t0:.0f}s)")

@@ -18,6 +18,9 @@ def _fallback(known, novel):
     return {'FPR': fpr, 'AUROC': auroc}
 
 
+METRICS_SOURCE = 'ood-kernel-pca/metrics.py' if _cal else 'fallback (src/metrics.py)'
+
+
 def ood_metrics(score_in, score_out):
     """score: higher = ID. returns {'FPR','AUROC'} in %."""
     r = _cal(score_in.copy(), score_out.copy()) if _cal else _fallback(score_in, score_out)
