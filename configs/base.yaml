@@ -35,6 +35,7 @@ run:
   # methods reported by evaluate.py: mhksa [2] | best_head [2-variant] | ensemble [3]
   # (training is the same for all; the H = 1 single head is always reported as the median-heuristic baseline)
   methods: [mhksa, best_head, ensemble]
+  resume: false                 # true: skip (seed, H) whose checkpoint already exists (scripts/run_parallel.sh sets it)
   ckpt_dir: ./checkpoints
   logs_dir: ./logs
   tag: ''

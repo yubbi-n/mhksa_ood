@@ -13,6 +13,8 @@ from src.config import load_config, run_name
 from src.data import load_id_train, split_calib
 from src.kernels import gamma_schedule, median_heuristic
 from src.model import MultiKernelOOD
+import os
+
 from src.utils import set_seed, Tee, ckpt_path, save_pickle
 
 
@@ -37,6 +39,9 @@ def main():
                                       np.random.RandomState([seed, 0]))
         print(f'[seed {seed}] median dist {med:.4f} -> gamma_med {g_med:.4f}')
         for H in cfg.kernel.heads:
+            if cfg.run.get('resume') and os.path.exists(ckpt_path(cfg, name, seed, H)):
+                print(f'[seed {seed}] H={H:2d} checkpoint exists -> skipped (run.resume=true)')
+                continue
             # own RNG per (seed, H): results for a given H do not depend on which other H's are run
             rng_h = np.random.RandomState([seed, H])
             gammas = gamma_schedule(H, cfg.kernel, g_med)

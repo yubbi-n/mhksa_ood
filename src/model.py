@@ -45,7 +45,16 @@ class PCA:
         """returns (coords in principal subspace, reconstruction-error norm)"""
         xc = x - self.mu
         c = xc @ self.U
-        return c, np.linalg.norm(xc - c @ self.U.T, axis=1)
+        return c, residual_norm(sq_norm(xc), c)
+
+
+def sq_norm(x):
+    return np.square(x).sum(1, dtype=np.float64)
+
+
+def residual_norm(xc_sq, c):
+    """||xc - U U^T xc|| = sqrt(||xc||^2 - ||c||^2) for orthonormal U (no n x d reconstruction needed)."""
+    return np.sqrt(np.maximum(xc_sq - sq_norm(c), 0)).astype(np.float32)
 
 
 class KernelHead:
@@ -68,7 +77,13 @@ class KernelHead:
         return self._project(self.rff(x))
 
     def _project(self, f):
-        return {'corp': self.pca.transform(f), 'mhksa': self.pca_mh.transform(f)}
+        # both truncations share mu and eigenvectors: centre / square once, and the CoRP coords are
+        # the first q columns of the MHKSA coords whenever q_corp <= q_mhksa
+        xc = f - self.pca.mu
+        n2 = sq_norm(xc)
+        c_mh = xc @ self.pca_mh.U
+        c = c_mh[:, :self.pca.q] if self.pca.q <= self.pca_mh.q else xc @ self.pca.U
+        return {'corp': (c, residual_norm(n2, c)), 'mhksa': (c_mh, residual_norm(n2, c_mh))}
 
 
 class MultiHead:
