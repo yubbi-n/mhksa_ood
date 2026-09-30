@@ -13,7 +13,8 @@ def set_seed(seed):
 
 
 class Tee:
-    """print to stdout and a log file."""
+    """print to stdout and a log file; flushed on every write so progress shows up
+    immediately even when stdout is redirected (nohup ... > log)."""
 
     def __init__(self, path):
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -21,6 +22,7 @@ class Tee:
 
     def write(self, m):
         self.s.write(m); self.f.write(m)
+        self.flush()
 
     def flush(self):
         self.s.flush(); self.f.flush()

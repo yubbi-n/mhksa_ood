@@ -39,7 +39,7 @@ Overrides: `--set kernel.heads=[1,5,10] run.seeds=[0] kernel.gamma_spacing=linea
 | `MHKSA` | [2] RFF_h → PCA_h → concat coords → PCA; score = −√(e1² + e2²) |
 | `MHKSA_e1only / e2only` | stage-1 / stage-2 error only (analysis) |
 | `best_head_oracle` | [2-variant] best head by test-OOD avg FPR (upper bound) |
-| `best_head_loo` | [2-variant] head chosen on the other OOD sets (fair) |
+| `best_head_loo` | [2-variant] head chosen on the other OOD sets (no test-set peeking, but still uses OOD data) |
 | `CoRP_Ens_percentile` | [3] per-head error → ID percentile → equal-weight sum |
 
 Gamma (senior's MHKSA): γ_h = γ_med · m_h, γ_med = 1/(2·med²) from the median heuristic (once per seed, shared by all H).
