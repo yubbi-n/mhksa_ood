@@ -28,6 +28,8 @@ python evaluate.py --config configs/c10_r18_ce.yaml --set data.cache_dir=/path/t
 # or
 bash scripts/run_c10.sh
 ```
+Method 2 (MHKSA) only: add `run.methods=[mhksa]` to evaluate.py (training is identical; outputs go to `eval_mhksa.log`, `results_mhksa.csv`).
+
 Overrides: `--set kernel.heads=[1,5,10] run.seeds=[0] kernel.gamma_spacing=linear model.mhksa_evr1=0.95`
 
 ## Methods
