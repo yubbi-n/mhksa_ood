@@ -40,7 +40,7 @@ Overrides: `--set kernel.heads=[1,5,10] run.seeds=[0] kernel.gamma_spacing=linea
 | `best_head_loo` | [2-variant] head chosen on the other OOD sets (fair) |
 | `CoRP_Ens_percentile` | [3] per-head error → ID percentile → equal-weight sum |
 
-Gamma (senior's MHKSA): γ_h = γ_med · m_h, γ_med = 1/(2·med²) from the median heuristic.
+Gamma (senior's MHKSA): γ_h = γ_med · m_h, γ_med = 1/(2·med²) from the median heuristic (once per seed, shared by all H).
 H = 1 → m = 1 (pure median heuristic); H ≥ 2 → m_h over [mult_min, mult_max] = [0.3, 3] (log-spaced).
 
 PCA ratios: `exp_var_ratio` (0.8 CE / 0.7 SupCon) for single head / best head / ensemble (= CoRP).

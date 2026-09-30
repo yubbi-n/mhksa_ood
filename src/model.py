@@ -55,15 +55,19 @@ class KernelHead:
         self.pca = PCA(exp_var_ratio)          # CoRP / single head / ensemble
         self.mhksa_evr1 = mhksa_evr1
 
-    def fit(self, x):
-        self.pca.fit(self.rff(x))
+    def fit_transform(self, x):
+        """fit on x and return transform(x) without recomputing the RFF."""
+        f = self.rff(x)
+        self.pca.fit(f)
         self.pca_mh = self.pca.with_ratio(self.mhksa_evr1).drop_spectrum()   # MHKSA stage 1
         self.pca.drop_spectrum()
-        return self
+        return self._project(f)
 
     def transform(self, x):
         """returns {'corp': (coords, err), 'mhksa': (coords, err)} ; RFF computed once."""
-        f = self.rff(x)
+        return self._project(self.rff(x))
+
+    def _project(self, f):
         return {'corp': self.pca.transform(f), 'mhksa': self.pca_mh.transform(f)}
 
 
@@ -74,14 +78,15 @@ class MultiHead:
         self.gammas = np.asarray(gammas, dtype=float)
         self.heads = [KernelHead(g, M, exp_var_ratio, mhksa_evr1, dim, rng) for g in self.gammas]
 
-    def fit(self, x):
-        for h in self.heads:
-            h.fit(x)
-        return self
+    def fit_transform(self, x):
+        return self._stack([h.fit_transform(x) for h in self.heads])
 
     def transform(self, x):
         """returns {'corp' | 'mhksa': (list of coords per head, errors (H, n))}"""
-        out = [h.transform(x) for h in self.heads]
+        return self._stack([h.transform(x) for h in self.heads])
+
+    @staticmethod
+    def _stack(out):
         return {k: ([o[k][0] for o in out], np.stack([o[k][1] for o in out])) for k in ('corp', 'mhksa')}
 
     @property
@@ -119,6 +124,8 @@ class CoRPEnsemble:
     """[3] per-head errors normalised w.r.t. ID reference errors, then weighted sum."""
 
     def __init__(self, stage1, norm='percentile', weights='equal'):
+        if weights != 'equal':
+            raise NotImplementedError(f'ens_weights={weights!r}: only "equal" is implemented')
         self.stage1, self.norm, self.weights = stage1, norm, weights
 
     def fit(self, x_ref, stage1_out=None):
@@ -149,8 +156,7 @@ class MultiKernelOOD:
         self.ens = CoRPEnsemble(self.stage1, m.ens_norm, m.ens_weights)
 
     def fit(self, x_train, x_calib=None):
-        self.stage1.fit(x_train)
-        out = self.stage1.transform(x_train)
+        out = self.stage1.fit_transform(x_train)
         self.mhksa.fit(x_train, out)
         self.ens.fit(x_calib, None) if x_calib is not None else self.ens.fit(x_train, out)
         return self

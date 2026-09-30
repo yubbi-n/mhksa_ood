@@ -27,9 +27,8 @@ def median_heuristic(x, n_sub=5000, mode='half', rng=None):
     return gamma, med
 
 
-def gamma_schedule(H, kcfg, x_train, rng=None):
-    """gamma_h = gamma_med * m_h.  H = 1 -> m = 1 (median heuristic) ; H >= 2 -> m_h over [mult_min, mult_max]."""
-    g_med, _ = median_heuristic(x_train, kcfg.median_subsample, kcfg.median_mode, rng)
+def gamma_schedule(H, kcfg, g_med):
+    """gamma_h = g_med * m_h.  H = 1 -> m = 1 (median heuristic) ; H >= 2 -> m_h over [mult_min, mult_max]."""
     if H == 1:
         return np.array([g_med])
     space = np.geomspace if kcfg.gamma_spacing == 'log' else np.linspace

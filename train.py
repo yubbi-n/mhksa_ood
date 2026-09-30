@@ -11,7 +11,7 @@ import numpy as np
 
 from src.config import load_config, run_name
 from src.data import load_id_train, split_calib
-from src.kernels import gamma_schedule
+from src.kernels import gamma_schedule, median_heuristic
 from src.model import MultiKernelOOD
 from src.utils import set_seed, Tee, ckpt_path, save_pickle
 
@@ -32,10 +32,14 @@ def main():
     for seed in cfg.run.seeds:
         rng = set_seed(seed)
         x_fit, x_cal = split_calib(x_all, cfg.data.calib_holdout, rng)
+        # one median-heuristic gamma per seed, shared by every H (the H = 1 baseline is the m = 1 head)
+        g_med, med = median_heuristic(x_fit, cfg.kernel.median_subsample, cfg.kernel.median_mode,
+                                      np.random.RandomState([seed, 0]))
+        print(f'[seed {seed}] median dist {med:.4f} -> gamma_med {g_med:.4f}')
         for H in cfg.kernel.heads:
             # own RNG per (seed, H): results for a given H do not depend on which other H's are run
             rng_h = np.random.RandomState([seed, H])
-            gammas = gamma_schedule(H, cfg.kernel, x_fit, rng_h)
+            gammas = gamma_schedule(H, cfg.kernel, g_med)
             model = MultiKernelOOD(gammas, cfg, x_fit.shape[1], rng_h).fit(x_fit, x_cal)
             info = model.info()
             print(f"[seed {seed}] H={H:2d} gammas={[round(g, 4) for g in info['gammas']]} "

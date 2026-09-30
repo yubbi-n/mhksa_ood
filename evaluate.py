@@ -85,6 +85,10 @@ def main():
             v = np.array([[r[6], r[7]] for r in rows if r[1] == H and r[2] == m and r[5] == 'AVG'])
             cells.append(f'{v[:, 0].mean():5.2f}±{v[:, 0].std():4.2f}/{v[:, 1].mean():5.2f}' if len(v) else '-')
         print(f'{H:>3d} ' + ' '.join(f'{c:>22s}' for c in cells))
+    base = np.array([r[6] for r in rows if r[1] == 1 and r[2] == 'single_head' and r[5] == 'AVG'])
+    if len(base):
+        print(f'baseline (H=1, median heuristic, evr {cfg.model.exp_var_ratio}): '
+              f'FPR95 {base.mean():.2f}±{base.std():.2f}  <- lower FPR than this = better than the baseline')
     print(f'\nCSV -> {csv_path}')
 
 
