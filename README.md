@@ -51,7 +51,13 @@ python scripts/visualize_images.py heatmap --config configs/c10_r18_ce.yaml \
     --set data.cache_dir=$HOME/ood-kernel-pca/cache --H 2 --data_root ~/data \
     --kpca_repo ~/ood-kernel-pca --ckpt ~/ood-kernel-pca/save/CIFAR10/R18/ce/checkpoint_100.pth.tar
 ```
-`heatmap` re-extracts features from the images and prints how far they are from the cache (should be ~1e-6),
+One image across runs (image | baseline | MHKSA H=1..10), auto-picking an image the baseline misses:
+```bash
+python scripts/visualize_images.py compare --config configs/c10_r18_ce.yaml \
+    --set data.cache_dir=$HOME/ood-kernel-pca/cache --dataset SVHN \
+    --ckpt ~/ood-kernel-pca/save/CIFAR10/R18/ce/checkpoint_100.pth.tar      # or --index 123
+```
+`heatmap`/`compare` re-extract features from the images and prints how far they are from the cache (should be ~1e-6),
 which checks the checkpoint, data path and image order.
 
 Overrides: `--set kernel.heads=[1,5,10] run.seeds=[0] kernel.gamma_spacing=linear model.mhksa_evr1=0.95`

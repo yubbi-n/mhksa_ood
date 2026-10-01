@@ -317,9 +317,100 @@ def cmd_heatmap(a):
     open(os.path.join(out, 'heatmap_check.txt'), 'w').write(msg + '\n')
 
 
+def cmd_compare(a):
+    """one image, Grad-CAM for every run: baseline | method at H = 1 .. 10 (same seed)."""
+    import torch
+    import torchvision.transforms as T
+    cfg = load_config(a.config, a.set)
+    name = run_name(cfg)
+    device = 'cuda' if torch.cuda.is_available() and not a.cpu else 'cpu'
+    net = load_net(a, cfg, torch, device)
+    f_in, f_out = load_eval(cfg)
+    feats = dict(f_out, CIFAR10=f_in)
+    heads = [h for h in (a.heads or cfg.kernel.heads) if os.path.exists(ckpt_path(cfg, name, a.seed, h))]
+    models = {h: load_pickle(ckpt_path(cfg, name, a.seed, h))['model'] for h in heads}
+    base = models[1] if 1 in models else load_pickle(ckpt_path(cfg, name, a.seed, 1))['model']
+
+    ds_name, idx = a.dataset, a.index
+    if idx is None:                                      # auto: an OOD image baseline misses but method@pick_H catches
+        groups, _ = pick(f_in, {ds_name: feats[ds_name]} if ds_name != 'CIFAR10' else {}, models[a.pick_H], base,
+                         a.method, 1)
+        g = groups[ds_name] if ds_name in groups else {}
+        for key in ('fixed: baseline missed, method caught', 'least OOD-like (hardest)', 'most OOD-like'):
+            if g.get(key):
+                idx, why = g[key][0][0], key
+                break
+        else:
+            idx, why = 0, 'index 0'
+        print(f'auto-picked {ds_name} #{idx} ({why} at H={a.pick_H})')
+
+    ds = image_dataset(ds_name, a.data_root)
+    to_t = T.Compose([T.ToTensor(), T.Normalize(MEAN, STD)])
+    x = to_t(ds[idx][0])[None].to(device)
+    img = get_image(ds, idx)
+    with torch.no_grad():
+        _, z = forward_maps(net, x, 4)
+    zc = z.cpu().numpy()[0]
+    zc /= np.linalg.norm(zc) + 1e-10
+    err = np.abs(zc - feats[ds_name][idx]).max()
+    print(f'check: |feature(image) - cached feature| = {err:.2e}' + ('  WARNING: mismatch' if err > 1e-3 else ''))
+
+    s_in_cache = {}
+    def verdict(model, method):                           # ID-percentile of this image + decision at 95% TPR
+        key = (id(model), method)
+        if key not in s_in_cache:
+            s_in_cache[key] = np.sort(model.scores(f_in)[method])
+        ref = s_in_cache[key]
+        s = model.scores(feats[ds_name][idx:idx + 1])[method][0]
+        return 100.0 * np.searchsorted(ref, s) / len(ref), s < np.percentile(ref, 5)
+
+    cols = [('baseline\n(H=1, median γ)', base, 'head0')] + [(f'{a.method}\nH={h}', models[h], a.method) for h in heads]
+    fig, axes = plt.subplots(1, len(cols) + 1, figsize=(max(1.45 * (len(cols) + 1), 7.5), 2.8), squeeze=False)
+    ax = axes[0, 0]
+    ax.imshow(img, interpolation='nearest')
+    ax.set_title(f'{ds_name} #{idx}', fontsize=8, color=INK)
+    ax.axis('off')
+    for j, (title, m, meth) in enumerate(cols, 1):
+        cam, _, _ = gradcam(net, TorchScorer(m, meth, torch, device), x, a.layer, torch)
+        p, det = verdict(m, meth)
+        ax = axes[0, j]
+        ax.imshow(img, interpolation='nearest')
+        ax.imshow(cam[0], cmap='inferno', alpha=0.55, vmin=0, vmax=1, interpolation='bilinear')
+        ax.set_title(title, fontsize=7.5, color=INK)
+        ax.text(0.5, -0.08, f'{"OOD" if det else "ID"} · {p:.1f}%', transform=ax.transAxes, ha='center', va='top',
+                fontsize=7.5, color=GOOD if det == (ds_name != 'CIFAR10') else BAD, fontweight='bold')
+        ax.axis('off')
+    fig.suptitle(f'{cfg.data.train_mode.upper()} · seed {a.seed} · Grad-CAM of the OOD score (layer{a.layer}); '
+                 f'bright = raises OOD score\nbelow each map: decision at 95% TPR · ID-percentile of the score '
+                 f'(green = correct, red = wrong)', fontsize=8, color=INK2)
+    fig.tight_layout(rect=(0, 0, 1, 0.86))
+    out = os.path.join(a.out, f'{cfg.data.train_mode}_seed{a.seed}_{a.method}')
+    os.makedirs(out, exist_ok=True)
+    path = os.path.join(out, f'compare_{ds_name}_{idx}.png')
+    fig.savefig(path, dpi=220)
+    plt.close(fig)
+    print('saved', path)
+
+
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest='cmd', required=True)
+    c = 'compare'
+    p = sub.add_parser(c, help='one image, heatmap of every run (baseline, H=1..10)')
+    p.add_argument('--config', required=True)
+    p.add_argument('--set', nargs='*', default=[])
+    p.add_argument('--seed', type=int, default=0)
+    p.add_argument('--method', default='MHKSA')
+    p.add_argument('--dataset', default='SVHN', help='SVHN | LSUN | iSUN | Texture | places365 | CIFAR10')
+    p.add_argument('--index', type=int, default=None, help='image index in that dataset (default: auto-pick)')
+    p.add_argument('--pick_H', type=int, default=2, help='H used for the auto-pick')
+    p.add_argument('--heads', type=int, nargs='*', default=None, help='H values to show (default: all)')
+    p.add_argument('--data_root', default='~/data')
+    p.add_argument('--kpca_repo', default='~/ood-kernel-pca')
+    p.add_argument('--ckpt', required=True)
+    p.add_argument('--layer', type=int, default=3, choices=[3, 4])
+    p.add_argument('--out', default='figures/images')
+    p.add_argument('--cpu', action='store_true')
     for c in ('examples', 'heatmap'):
         p = sub.add_parser(c)
         p.add_argument('--config', required=True)
@@ -338,7 +429,7 @@ def main():
                            help='which picked group to explain per set (first one that exists)')
             p.add_argument('--cpu', action='store_true')
     a = ap.parse_args()
-    {'examples': cmd_examples, 'heatmap': cmd_heatmap}[a.cmd](a)
+    {'examples': cmd_examples, 'heatmap': cmd_heatmap, 'compare': cmd_compare}[a.cmd](a)
 
 
 if __name__ == '__main__':
