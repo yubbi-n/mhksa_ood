@@ -41,12 +41,49 @@ plt.rcParams.update({'figure.facecolor': SURFACE, 'savefig.facecolor': SURFACE, 
 
 
 # ---------------------------------------------------------------- data
+IMG_EXT = ('.jpg', '.jpeg', '.png', '.ppm', '.bmp', '.pgm', '.tif', '.tiff', '.webp')   # torchvision's list
+
+
+class _Images:
+    """torch-free reader with the same files / order as the torchvision datasets ood-kernel-pca uses."""
+
+    def __init__(self, name, root):
+        from PIL import Image
+        self.Image = Image
+        if name == 'CIFAR10':                              # torchvision CIFAR10(train=False): test_batch
+            import pickle
+            with open(os.path.join(root, 'CIFAR10', 'cifar-10-batches-py', 'test_batch'), 'rb') as f:
+                d = pickle.load(f, encoding='latin1')
+            self.arr = d['data'].reshape(-1, 3, 32, 32).transpose(0, 2, 3, 1)
+        elif name == 'SVHN':                               # torchvision SVHN(split='test'): test_32x32.mat
+            from scipy.io import loadmat
+            self.arr = loadmat(os.path.join(root, 'ood_data', 'svhn', 'test_32x32.mat'))['X'].transpose(3, 0, 1, 2)
+        else:                                              # torchvision ImageFolder ordering
+            d = os.path.join(root, 'ood_data', 'dtd', 'images') if name == 'Texture' else os.path.join(root, 'ood_data', name)
+            self.arr, self.files = None, []
+            for c in sorted(e.name for e in os.scandir(d) if e.is_dir()):
+                for r, _, fs in sorted(os.walk(os.path.join(d, c), followlinks=True)):
+                    self.files += [os.path.join(r, f) for f in sorted(fs) if f.lower().endswith(IMG_EXT)]
+
+    def __len__(self):
+        return len(self.arr) if self.arr is not None else len(self.files)
+
+    def __getitem__(self, i):
+        im = (self.Image.fromarray(self.arr[i]) if self.arr is not None
+              else self.Image.open(self.files[i]).convert('RGB'))
+        return im.resize((32, 32), self.Image.BILINEAR), 0
+
+
 def image_dataset(name, root):
     """same datasets / order as ood-kernel-pca/utils_ood.py; images resized to 32x32 (what the network saw)."""
-    import torchvision as tv
-    import torchvision.transforms as T
-    tf = T.Resize((32, 32))
     root = os.path.expanduser(root)
+    try:
+        import torchvision as tv
+        import torchvision.transforms as T
+    except Exception as e:                                 # no / broken torch: read the files directly
+        print(f'[{name}] torchvision unavailable ({type(e).__name__}); reading image files directly')
+        return _Images(name, root)
+    tf = T.Resize((32, 32))
     if name == 'CIFAR10':
         return tv.datasets.CIFAR10(os.path.join(root, 'CIFAR10'), train=False, transform=tf, download=False)
     if name == 'SVHN':
