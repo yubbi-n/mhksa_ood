@@ -17,7 +17,7 @@ src/
   utils.py       seed, logger, checkpoint, csv
 train.py         fit on ID train -> checkpoints/<run>/seed{s}_H{H}.pkl
 evaluate.py      load checkpoints -> logs/<run>/{eval.log, results.csv} + summary table
-scripts/run_c10.sh
+scripts/run_c10.sh, run_parallel.sh, plot_results.py
 ```
 
 ## Run
@@ -34,6 +34,12 @@ CFG=configs/c10_r18_ce.yaml FEAT_CACHE=/path/to/cache KPCA_REPO=/path/to/ood-ker
   bash scripts/run_parallel.sh run.methods=[mhksa]
 ```
 Method 2 (MHKSA) only: add `run.methods=[mhksa]` to evaluate.py (training is identical; outputs go to `eval_mhksa.log`, `results_mhksa.csv`).
+
+Plots (needs `matplotlib`): reads `logs/*-ce-*/results_*.csv` and `logs/*-supcon-*/results_*.csv`
+```bash
+python scripts/plot_results.py            # -> figures/fig1_vs_heads.png, fig2_mhksa_parts.png, fig3_per_ood_H2.png, summary.md
+python scripts/plot_results.py --h 3      # per-OOD bars at H = 3
+```
 
 Overrides: `--set kernel.heads=[1,5,10] run.seeds=[0] kernel.gamma_spacing=linear model.mhksa_evr1=0.95`
 
