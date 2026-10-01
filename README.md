@@ -17,7 +17,7 @@ src/
   utils.py       seed, logger, checkpoint, csv
 train.py         fit on ID train -> checkpoints/<run>/seed{s}_H{H}.pkl
 evaluate.py      load checkpoints -> logs/<run>/{eval.log, results.csv} + summary table
-scripts/run_c10.sh, run_parallel.sh, plot_results.py
+scripts/run_c10.sh, run_parallel.sh, plot_results.py, visualize_images.py
 ```
 
 ## Run
@@ -40,6 +40,19 @@ Plots (needs `matplotlib`): reads `logs/*-ce-*/results_*.csv` and `logs/*-supcon
 python scripts/plot_results.py            # -> figures/fig1_vs_heads.png, fig2_mhksa_parts.png, fig3_per_ood_H2.png, summary.md
 python scripts/plot_results.py --h 3      # per-OOD bars at H = 3
 ```
+
+Image-level views (`torchvision` for images; `heatmap` also needs `torch`, the ood-kernel-pca repo and its ResNet18 checkpoint):
+```bash
+# grids of real images: most / least OOD-like, fixed / broken vs baseline, ID false alarms (+ picked.csv, summary.txt)
+python scripts/visualize_images.py examples --config configs/c10_r18_ce.yaml \
+    --set data.cache_dir=$HOME/ood-kernel-pca/cache --H 2 --data_root ~/data
+# Grad-CAM of the OOD score (layer3, 8x8): image | baseline | MHKSA
+python scripts/visualize_images.py heatmap --config configs/c10_r18_ce.yaml \
+    --set data.cache_dir=$HOME/ood-kernel-pca/cache --H 2 --data_root ~/data \
+    --kpca_repo ~/ood-kernel-pca --ckpt ~/ood-kernel-pca/save/CIFAR10/R18/ce/checkpoint_100.pth.tar
+```
+`heatmap` re-extracts features from the images and prints how far they are from the cache (should be ~1e-6),
+which checks the checkpoint, data path and image order.
 
 Overrides: `--set kernel.heads=[1,5,10] run.seeds=[0] kernel.gamma_spacing=linear model.mhksa_evr1=0.95`
 
