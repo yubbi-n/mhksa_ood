@@ -95,7 +95,9 @@ def main():
         print(f'{H:>3d} ' + ' '.join(f'{c:>22s}' for c in cells))
     base = np.array([r[6] for r in rows if r[1] == 1 and r[2] == 'single_head' and r[5] == 'AVG'])
     if len(base):
-        print(f'baseline (H=1, median heuristic, evr {cfg.model.exp_var_ratio}): '
+        how = (f'gamma_base={cfg.kernel.gamma_base}' if cfg.kernel.get('gamma_base') is not None
+               else 'median heuristic')
+        print(f'baseline (H=1, {how}, evr {cfg.model.exp_var_ratio}): '
               f'FPR95 {base.mean():.2f}±{base.std():.2f}  <- lower FPR than this = better than the baseline')
     print(f'\nCSV -> {csv_path}')
 

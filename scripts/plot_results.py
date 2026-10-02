@@ -4,7 +4,7 @@
     python scripts/plot_results.py --h 3 --out figures   # per-OOD bars at H = 3
     python scripts/plot_results.py --ce logs/<run> --supcon logs/<run>
 
-Reads  <run>/results_mhksa.csv and <run>/results_best_head.csv  (either may be missing).
+Reads  every <run>/results*.csv written by evaluate.py (results.csv, results_mhksa.csv, results_best_head.csv, ...).
 Writes <out>/fig1_vs_heads.png      FPR95 / AUROC vs number of heads (MHKSA, best head LOO / oracle, baseline)
        <out>/fig2_mhksa_parts.png   MHKSA vs stage-1-only / stage-2-only error
        <out>/fig3_per_ood_H{h}.png  per-OOD FPR95 at one H (baseline vs MHKSA vs best head LOO)
@@ -33,6 +33,11 @@ STYLE = {   # method -> (label, colour, marker, linestyle)
 }
 OOD_ORDER = ['SVHN', 'LSUN', 'iSUN', 'Texture', 'places365']
 MODES = [('ce', 'CE'), ('supcon', 'SupCon')]
+BASE_GAMMA = {}       # mode title -> 'median γ' or 'γ=<value>' (from the run folder name, '-gb<value>')
+
+
+def base_label(title):
+    return BASE_GAMMA.get(title, 'median γ')
 
 plt.rcParams.update({
     'figure.facecolor': SURFACE, 'axes.facecolor': SURFACE, 'savefig.facecolor': SURFACE,
@@ -55,10 +60,7 @@ def load(run):
     """{(method, H, dataset): [(FPR, AUROC) per seed]} from both CSVs of a run."""
     d = defaultdict(list)
     seen = set()
-    for name in ('results_mhksa.csv', 'results_best_head.csv'):
-        path = os.path.join(run, name)
-        if not os.path.exists(path):
-            continue
+    for path in sorted(glob.glob(os.path.join(run, 'results*.csv'))):
         for r in csv.DictReader(open(path)):
             key = (r['method'], int(r['H']), r['dataset'])
             if (key, r['seed']) in seen:            # single_head H=1 appears in both files
@@ -93,7 +95,7 @@ def baseline(ax, d, col):
     if n == 0:
         return
     ax.axhspan(mu - sd, mu + sd, color=BASE, alpha=0.08, lw=0, zorder=1)
-    ax.axhline(mu, color=BASE, ls=(0, (4, 3)), lw=1.5, zorder=2, label='Baseline (median γ, H=1) ± std')
+    ax.axhline(mu, color=BASE, ls=(0, (4, 3)), lw=1.5, zorder=2, label='Baseline (H=1 head) ± std')
 
 
 def base_txt(d, col=0):
@@ -146,8 +148,10 @@ def fig_vs_heads(data, out):
             label_ends(ax, Hs, ends)
     h, l = axes[0, 0].get_legend_handles_labels()
     fig.legend(h, l, loc='upper center', ncol=4, bbox_to_anchor=(0.5, 1.03), fontsize=9)
-    fig.text(0.5, -0.01, 'CIFAR10 · ResNet18. Mean ± std over seeds, averaged over 5 OOD sets. H = 1 uses the median-heuristic γ; '
-             'H ≥ 2 uses γ_med × [0.3, 3] (log-spaced).', ha='center', fontsize=8.5, color=INK2)
+    bases = ', '.join(f'{t} {base_label(t)}' for _, t, _ in data)
+    fig.text(0.5, -0.01, f'CIFAR10 · ResNet18. Mean ± std over seeds, averaged over 5 OOD sets. '
+             f'Base γ ({bases}) is the H = 1 head; H ≥ 2 uses base × [0.3, 3] (log-spaced).',
+             ha='center', fontsize=8.5, color=INK2)
     fig.tight_layout(h_pad=1.5, w_pad=3)
     save(fig, out, 'fig1_vs_heads.png')
 
@@ -187,7 +191,7 @@ def fig_mhksa_parts(data, out):
 
 
 def fig_per_ood(data, out, H):
-    bars = [('single_head', 1, 'Baseline (median γ, H=1)', BASE),
+    bars = [('single_head', 1, 'Baseline (H=1 head)', BASE),
             ('MHKSA', H, f'MHKSA, H={H}', STYLE['MHKSA'][1]),
             ('best_head_loo', H, f'Best head LOO, H={H}', STYLE['best_head_loo'][1])]
     fig, axes = plt.subplots(1, len(data), figsize=(5.6 * len(data), 3.8), squeeze=False)
@@ -223,7 +227,7 @@ def summary_md(data, out, H):
                 if stat(d, m, Hs[-1])[2]]
         mu, sd, _ = stat(d, 'single_head', 1)
         au = stat(d, 'single_head', 1, col=1)[0]
-        lines += [f'## {title}', '', f'Baseline (H=1, median γ): FPR95 {mu:.2f} ± {sd:.2f} / AUROC {au:.2f}', '',
+        lines += [f'## {title}', '', f'Baseline (H=1, {base_label(title)}): FPR95 {mu:.2f} ± {sd:.2f} / AUROC {au:.2f}', '',
                   '| H | ' + ' | '.join(cols) + ' |', '| --- |' + ' --- |' * len(cols)]
         for h in Hs:
             cells = []
@@ -258,9 +262,10 @@ def main():
     data = []
     for mode, title in MODES:
         run = getattr(a, mode) or find_run(a.logs, mode)
-        if run and (os.path.exists(os.path.join(run, 'results_mhksa.csv'))
-                    or os.path.exists(os.path.join(run, 'results_best_head.csv'))):
+        if run and glob.glob(os.path.join(run, 'results*.csv')):
             print(f'[{mode}] {run}')
+            gb = os.path.basename(os.path.normpath(run)).split('-gb')
+            BASE_GAMMA[title] = f"γ={gb[1].split('-')[0].split('_')[0]}" if len(gb) > 1 else 'median γ'
             data.append((mode, title, load(run)))
     if not data:
         raise SystemExit(f'no results_*.csv found under {a.logs}/')

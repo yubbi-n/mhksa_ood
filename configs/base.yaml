@@ -16,6 +16,8 @@ kernel:
   mult_max: 3.0
   gamma_spacing: log            # log | linear  (spacing of m_h)
   median_mode: half             # half -> gamma_med = 1/(2 med^2), plain -> 1/med^2
+  gamma_base: null              # null -> gamma_med from the median heuristic; a number -> fixed base gamma
+                                #   (e.g. the paper's tuned CoRP gamma: CE 2, SupCon 1); heads = base x m_h
   median_subsample: 5000
   M: 2048                       # RFF dim per head
 

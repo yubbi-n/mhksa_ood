@@ -38,6 +38,9 @@ def main():
         g_med, med = median_heuristic(x_fit, cfg.kernel.median_subsample, cfg.kernel.median_mode,
                                       np.random.RandomState([seed, 0]))
         print(f'[seed {seed}] median dist {med:.4f} -> gamma_med {g_med:.4f}')
+        if cfg.kernel.get('gamma_base') is not None:        # fixed base gamma instead of the median heuristic
+            g_med = float(cfg.kernel.gamma_base)
+            print(f'[seed {seed}] kernel.gamma_base set -> base gamma {g_med:.4f} (median heuristic not used)')
         for H in cfg.kernel.heads:
             if cfg.run.get('resume') and os.path.exists(ckpt_path(cfg, name, seed, H)):
                 print(f'[seed {seed}] H={H:2d} checkpoint exists -> skipped (run.resume=true)')

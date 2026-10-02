@@ -60,6 +60,12 @@ python scripts/visualize_images.py compare --config configs/c10_r18_ce.yaml \
 `heatmap`/`compare` re-extract features from the images and prints how far they are from the cache (should be ~1e-6),
 which checks the checkpoint, data path and image order.
 
+Fixed base γ instead of the median heuristic (e.g. the paper's tuned CoRP γ: CE 2, SupCon 1); heads = base × [0.3, 3],
+results go to a separate `...-gb<γ>` folder:
+```bash
+CFG=configs/c10_r18_ce.yaml FEAT_CACHE=... KPCA_REPO=... bash scripts/run_parallel.sh kernel.gamma_base=2 run.methods=[mhksa,best_head]
+```
+
 Overrides: `--set kernel.heads=[1,5,10] run.seeds=[0] kernel.gamma_spacing=linear model.mhksa_evr1=0.95`
 
 ## Methods

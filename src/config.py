@@ -63,4 +63,5 @@ def run_name(cfg):
     k, m = cfg.kernel, cfg.model
     return (f"{cfg.data.in_data}-{cfg.data.arch}-{cfg.data.train_mode}"
             f"-evr{m.exp_var_ratio}-mh{m.mhksa_evr1}_{m.mhksa_evr2}-M{k.M}"
-            f"-m{k.mult_min}_{k.mult_max}{k.gamma_spacing}{cfg.run.tag}")
+            f"-m{k.mult_min}_{k.mult_max}{k.gamma_spacing}"
+            + (f"-gb{k.gamma_base}" if k.get('gamma_base') is not None else '') + f"{cfg.run.tag}")
