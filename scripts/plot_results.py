@@ -5,7 +5,7 @@
     python scripts/plot_results.py --ce logs/<run> --supcon logs/<run>
 
 Reads  every <run>/results*.csv written by evaluate.py (results.csv, results_mhksa.csv, results_best_head.csv, ...).
-Writes <out>/fig1_vs_heads.png      FPR95 / AUROC vs number of heads (MHKSA, best head LOO / oracle, baseline)
+Writes <out>/fig1_vs_heads.png      FPR95 / AUROC vs number of heads (MHKSA, best head LOO, baseline)
        <out>/fig2_mhksa_parts.png   MHKSA vs stage-1-only / stage-2-only error
        <out>/fig3_per_ood_H{h}.png  per-OOD FPR95 at one H (baseline vs MHKSA vs best head LOO)
        <out>/summary.md             every plotted number as a table (mean ± std over seeds)
@@ -127,7 +127,7 @@ def save(fig, out, name):
 
 # ---------------------------------------------------------------- figures
 def fig_vs_heads(data, out):
-    methods = ['MHKSA', 'best_head_loo', 'best_head_oracle']
+    methods = ['MHKSA', 'best_head_loo']     # oracle (picked on the test OOD sets) is left out of the plots
     fig, axes = plt.subplots(2, len(data), figsize=(5.4 * len(data), 7.2), squeeze=False)
     for j, (mode, title, d) in enumerate(data):
         Hs = heads_of(d)
