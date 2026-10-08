@@ -197,9 +197,10 @@ class MultiKernelOOD:
         self.ens.fit(x_calib, None) if x_calib is not None else self.ens.fit(x_train, out)
         return self
 
-    def scores(self, x):
-        """dict: method name -> score (n,) ; plus 'head{h}' for each single head."""
-        out = self.stage1.transform(x)
+    def scores(self, x, out=None):
+        """dict: method name -> score (n,) ; plus 'head{h}' for each single head.
+        out: precomputed self.stage1.transform(x), to share it with other scorers."""
+        out = out or self.stage1.transform(x)
         s = {f'head{h}': -e for h, e in enumerate(out['corp'][1])}
         s.update(self.mhksa.scores(x, out))
         s.update(self.ens.scores(x, out))

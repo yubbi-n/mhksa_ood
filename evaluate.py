@@ -7,18 +7,20 @@ methods reported per (seed, H)  (select with run.methods, e.g. --set run.methods
     MHKSA / _e1only / _e2only                                    [2]
     best_head_oracle / best_head_loo                             [2-variant]
     CoRP_Ens_percentile / CoRP_Ens_zscore                        [3]
+    Comb_MHKSA_norm / _norm_e1only / Comb_Ens_max                head-combination variants (src/combine.py)
 """
 import sys
 import argparse
 import numpy as np
 
 from src.config import load_config, run_name
-from src.data import load_eval
+from src.combine import Combiner
+from src.data import load_eval, load_id_train
 from src.metrics import evaluate_all, METRICS_SOURCE
 from src.selection import best_head_oracle, best_head_loo
 from src.utils import Tee, ckpt_path, load_pickle, write_csv
 
-ALL_METHODS = ['mhksa', 'best_head', 'ensemble']
+ALL_METHODS = ['mhksa', 'best_head', 'ensemble', 'combine']     # the first three = the default full run (eval.log)
 
 
 def fmt_g(gs):
@@ -34,11 +36,12 @@ def main():
     name = run_name(cfg)
     methods = list(cfg.run.get('methods', ALL_METHODS))
     assert set(methods) <= set(ALL_METHODS), f'run.methods must be a subset of {ALL_METHODS}'
-    suffix = '' if set(methods) == set(ALL_METHODS) else '_' + '_'.join(methods)   # keep full-run logs intact
+    suffix = '' if set(methods) == set(ALL_METHODS[:3]) else '_' + '_'.join(methods)   # keep full-run logs intact
     sys.stdout = Tee(f'{cfg.run.logs_dir}/{name}/eval{suffix}.log')
     print(f'\n==== eval: {name} ====  (FPR95 / AUROC, %)  metrics: {METRICS_SOURCE}  methods: {methods}')
 
     f_in, f_out = load_eval(cfg)
+    x_train = load_id_train(cfg) if 'combine' in methods else None
     oods = list(f_out)
     rows = []
 
@@ -56,8 +59,20 @@ def main():
             gammas = info['gammas']
             print(f"\n[seed {seed}] H={H} gammas={[round(g, 4) for g in gammas]} q1={info['q1']} | MHKSA q1={info['q1_mh']} q2={info['q2']}")
 
-            s_in = model.scores(f_in)
-            s_out = {n: model.scores(x) for n, x in f_out.items()}
+            if 'combine' in methods:
+                # fixed ID-train reference subset per seed (same for every H), for the MHKSA scales
+                ref = np.random.RandomState([seed, 2]).choice(len(x_train), min(cfg.model.combine_ref, len(x_train)), replace=False)
+                comb = Combiner(model, x_train[ref])
+
+            def all_scores(x):
+                out = model.stage1.transform(x)
+                s = model.scores(x, out)
+                if 'combine' in methods:
+                    s.update(comb.scores(x, out))
+                return s
+
+            s_in = all_scores(f_in)
+            s_out = {n: all_scores(x) for n, x in f_out.items()}
 
             head_results = []
             if 'best_head' in methods or H == 1:            # H = 1 single head = median-heuristic baseline
@@ -67,7 +82,8 @@ def main():
                     add(seed, H, 'single_head', [gammas[h]], per, avg, extra=f'head{h}_q{info["q1"][h]}')
 
             for mth in [k for k in s_in if not k.startswith('head')]:
-                if (mth.startswith('MHKSA') and 'mhksa' in methods) or (mth.startswith('CoRP_Ens') and 'ensemble' in methods):
+                if (mth.startswith('MHKSA') and 'mhksa' in methods) or (mth.startswith('CoRP_Ens') and 'ensemble' in methods) \
+                        or (mth.startswith('Comb_') and 'combine' in methods):
                     per, avg = evaluate_all(s_in[mth], {n: s_out[n][mth] for n in oods})
                     add(seed, H, mth, gammas, per, avg, extra=f"q2={info['q2']}" if mth.startswith('MHKSA') else '')
 
@@ -84,7 +100,8 @@ def main():
     # ---- summary: AVG over OOD sets, mean ± std over seeds
     cols = (['MHKSA', 'MHKSA_e1only', 'MHKSA_e2only'] if 'mhksa' in methods else []) \
         + (['best_head_oracle', 'best_head_loo'] if 'best_head' in methods else []) \
-        + (['CoRP_Ens_percentile', 'CoRP_Ens_zscore'] if 'ensemble' in methods else [])
+        + (['CoRP_Ens_percentile', 'CoRP_Ens_zscore'] if 'ensemble' in methods else []) \
+        + (['Comb_MHKSA_norm', 'Comb_MHKSA_norm_e1only', 'Comb_Ens_max'] if 'combine' in methods else [])
     print('\n==== summary: AVG over OOD sets, mean±std over seeds (FPR95 / AUROC) ====')
     print(f"{'H':>3s} " + ' '.join(f'{m[:20]:>22s}' for m in cols))
     for H in cfg.kernel.heads:

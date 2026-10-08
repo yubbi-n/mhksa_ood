@@ -28,13 +28,14 @@ model:
   # (0.9 x 0.9 = 0.81 ~ 0.8). null = same as mhksa_evr1.
   mhksa_evr1: 0.9               # MHKSA stage 1 (per-head PCA)
   mhksa_evr2: null              # MHKSA stage 2 (concat PCA)
+  combine_ref: 10000            # [combine] ID-train samples used for the per-head scales of Comb_MHKSA_norm
   ens_weights: equal            # ensemble [3] head weights: equal (only option for now);
                                 #   percentile and z-score normalisation are both reported
 
 # ---------------- run ----------------
 run:
   seeds: [0, 1, 2, 3, 4]
-  # methods reported by evaluate.py: mhksa [2] | best_head [2-variant] | ensemble [3]
+  # methods reported by evaluate.py: mhksa [2] | best_head [2-variant] | ensemble [3] | combine (src/combine.py)
   # (training is the same for all; the H = 1 single head is always reported as the median-heuristic baseline)
   methods: [mhksa, best_head, ensemble]
   resume: false                 # true: skip (seed, H) whose checkpoint already exists (scripts/run_parallel.sh sets it)

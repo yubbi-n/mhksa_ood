@@ -8,6 +8,7 @@ Reads  every <run>/results*.csv written by evaluate.py (results.csv, results_mhk
 Writes <out>/fig1_vs_heads.png      FPR95 / AUROC vs number of heads (MHKSA, best head LOO, ensemble, baseline)
        <out>/fig2_mhksa_parts.png   MHKSA vs stage-1-only / stage-2-only error
        <out>/fig3_per_ood_H{h}.png  per-OOD FPR95 at one H (baseline vs MHKSA vs best head LOO vs ensemble)
+       <out>/fig4_combine.png       head-combination variants (run.methods=[combine]) vs MHKSA / ensemble
        <out>/summary.md             every plotted number as a table (mean ± std over seeds)
 """
 import os
@@ -30,6 +31,8 @@ STYLE = {   # method -> (label, colour, marker, linestyle)
     'best_head_oracle': ('Best head, oracle [2-var]',  '#1baf7a', '^', '--'),
     'CoRP_Ens_percentile': ('Ensemble, percentile [3]', '#1baf7a', '^', '-'),
     'CoRP_Ens_zscore':  ('Ensemble, z-score [3]',      '#1baf7a', 'v', '--'),
+    'Comb_MHKSA_norm':  ('MHKSA, per-head scaled',     '#eb6834', 's', '-'),
+    'Comb_Ens_max':     ('Ensemble, max (z-score)',    '#eda100', 'D', '-'),
     'MHKSA_e1only':     ('Stage-1 error only',         '#eda100', 'D', '-'),
     'MHKSA_e2only':     ('Stage-2 error only',         '#e87ba4', 'v', '-'),
 }
@@ -128,8 +131,8 @@ def save(fig, out, name):
 
 
 # ---------------------------------------------------------------- figures
-def fig_vs_heads(data, out):
-    methods = ['MHKSA', 'best_head_loo', 'CoRP_Ens_percentile']   # oracle (picked on the test OOD sets) is left out of the plots
+def fig_vs_heads(data, out, methods=('MHKSA', 'best_head_loo', 'CoRP_Ens_percentile'), name='fig1_vs_heads.png'):
+    # oracle (picked on the test OOD sets) is left out of the plots
     fig, axes = plt.subplots(2, len(data), figsize=(5.4 * len(data), 7.2), squeeze=False)
     for j, (mode, title, d) in enumerate(data):
         Hs = heads_of(d)
@@ -155,7 +158,7 @@ def fig_vs_heads(data, out):
              f'Base γ ({bases}) is the H = 1 head; H ≥ 2 uses base × [0.3, 3] (log-spaced).',
              ha='center', fontsize=8.5, color=INK2)
     fig.tight_layout(h_pad=1.5, w_pad=3)
-    save(fig, out, 'fig1_vs_heads.png')
+    save(fig, out, name)
 
 
 def fig_mhksa_parts(data, out):
@@ -227,7 +230,7 @@ def summary_md(data, out, H):
     for mode, title, d in data:
         Hs = heads_of(d)
         cols = [m for m in ['MHKSA', 'MHKSA_e1only', 'MHKSA_e2only', 'best_head_oracle', 'best_head_loo',
-                            'CoRP_Ens_percentile', 'CoRP_Ens_zscore']
+                            'CoRP_Ens_percentile', 'CoRP_Ens_zscore', 'Comb_MHKSA_norm', 'Comb_MHKSA_norm_e1only', 'Comb_Ens_max']
                 if stat(d, m, Hs[-1])[2]]
         mu, sd, _ = stat(d, 'single_head', 1)
         au = stat(d, 'single_head', 1, col=1)[0]
@@ -276,6 +279,8 @@ def main():
         raise SystemExit(f'no results_*.csv found under {a.logs}/')
 
     fig_vs_heads(data, a.out)
+    if any(stat(d, 'Comb_MHKSA_norm', h)[2] for _, _, d in data for h in heads_of(d)):
+        fig_vs_heads(data, a.out, ('MHKSA', 'Comb_MHKSA_norm', 'CoRP_Ens_zscore', 'Comb_Ens_max'), 'fig4_combine.png')
     fig_mhksa_parts(data, a.out)
     fig_per_ood(data, a.out, a.h)
     summary_md(data, a.out, a.h)

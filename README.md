@@ -34,6 +34,7 @@ CFG=configs/c10_r18_ce.yaml FEAT_CACHE=/path/to/cache KPCA_REPO=/path/to/ood-ker
   bash scripts/run_parallel.sh run.methods=[mhksa]
 ```
 Method 2 (MHKSA) only: add `run.methods=[mhksa]` to evaluate.py (training is identical; outputs go to `eval_mhksa.log`, `results_mhksa.csv`).
+Head-combination variants (`src/combine.py`), on existing checkpoints: `--set run.methods=[combine]` → `eval_combine.log`, `results_combine.csv`; `plot_results.py` then also writes `fig4_combine.png`.
 Method 3 (ensemble) only, on existing checkpoints (no retraining): `python evaluate.py --config ... --set run.methods=[ensemble]` (add `kernel.gamma_base=2` etc. for a fixed-base run) → `eval_ensemble.log`, `results_ensemble.csv`.
 
 Plots (needs `matplotlib`): reads `logs/*-ce-*/results_*.csv` and `logs/*-supcon-*/results_*.csv`
@@ -79,6 +80,8 @@ Overrides: `--set kernel.heads=[1,5,10] run.seeds=[0] kernel.gamma_spacing=linea
 | `best_head_loo` | [2-variant] head chosen on the other OOD sets (no test-set peeking, but still uses OOD data) |
 | `CoRP_Ens_percentile` | [3] per-head error → percentile of the ID train errors of that head → equal-weight sum (linear beyond the ID range, so OOD samples past every ID error are not tied) |
 | `CoRP_Ens_zscore` | [3] same, with (error − ID mean) / ID std per head |
+| `Comb_MHKSA_norm` | MHKSA with every stage-1 residual and the stage-2 residual divided by its ID RMS (all H+1 terms weigh the same); `_e1only`: stage-1 terms only |
+| `Comb_Ens_max` | ensemble with max over heads of the per-head z-score instead of the mean |
 
 Gamma (senior's MHKSA): γ_h = γ_med · m_h, γ_med = 1/(2·med²) from the median heuristic (once per seed, shared by all H).
 H = 1 → m = 1 (pure median heuristic); H ≥ 2 → m_h over [mult_min, mult_max] = [0.3, 3] (log-spaced).
