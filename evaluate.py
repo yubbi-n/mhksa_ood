@@ -6,7 +6,7 @@ methods reported per (seed, H)  (select with run.methods, e.g. --set run.methods
     head{h}              each single head (= CoRP with that gamma)
     MHKSA / _e1only / _e2only                                    [2]
     best_head_oracle / best_head_loo                             [2-variant]
-    CoRP_Ens_<norm>                                              [3]
+    CoRP_Ens_percentile / CoRP_Ens_zscore                        [3]
 """
 import sys
 import argparse
@@ -84,7 +84,7 @@ def main():
     # ---- summary: AVG over OOD sets, mean ± std over seeds
     cols = (['MHKSA', 'MHKSA_e1only', 'MHKSA_e2only'] if 'mhksa' in methods else []) \
         + (['best_head_oracle', 'best_head_loo'] if 'best_head' in methods else []) \
-        + ([f'CoRP_Ens_{cfg.model.ens_norm}'] if 'ensemble' in methods else [])
+        + (['CoRP_Ens_percentile', 'CoRP_Ens_zscore'] if 'ensemble' in methods else [])
     print('\n==== summary: AVG over OOD sets, mean±std over seeds (FPR95 / AUROC) ====')
     print(f"{'H':>3s} " + ' '.join(f'{m[:20]:>22s}' for m in cols))
     for H in cfg.kernel.heads:

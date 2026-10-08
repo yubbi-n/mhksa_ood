@@ -5,7 +5,7 @@
                  one eigen-decomposition, two truncations: exp_var_ratio (CoRP) and mhksa_evr1 (MHKSA stage 1)
   MultiHead      H KernelHeads (stage 1, shared by every method below)
   MHKSA          [2]  concat stage-1 coords -> PCA (stage 2); error = sqrt(e1^2 + e2^2)
-  CoRPEnsemble   [3]  per-head error -> percentile/z-score vs ID reference -> weighted sum
+  CoRPEnsemble   [3]  per-head error -> percentile and z-score vs ID reference -> weighted sum
   (best single head [2-variant] is a selection over MultiHead's per-head scores -> see selection.py)
 """
 import numpy as np
@@ -136,12 +136,17 @@ class MHKSA:
 
 
 class CoRPEnsemble:
-    """[3] per-head errors normalised w.r.t. ID reference errors, then weighted sum."""
+    """[3] per-head errors normalised w.r.t. ID reference errors, then weighted sum.
 
-    def __init__(self, stage1, norm='percentile', weights='equal'):
+    Both normalisations are reported (CoRP_Ens_percentile, CoRP_Ens_zscore); they only need the
+    reference statistics stored by fit(), so they can be compared on existing checkpoints.
+    """
+    NORMS = ('percentile', 'zscore')
+
+    def __init__(self, stage1, weights='equal'):
         if weights != 'equal':
             raise NotImplementedError(f'ens_weights={weights!r}: only "equal" is implemented')
-        self.stage1, self.norm, self.weights = stage1, norm, weights
+        self.stage1, self.weights = stage1, weights
 
     def fit(self, x_ref, stage1_out=None):
         _, E = (stage1_out or self.stage1.transform(x_ref))['corp']
@@ -151,14 +156,30 @@ class CoRPEnsemble:
         self.w = np.ones(H) / H                        # TODO: other weighting schemes
         return self
 
-    def _normalize(self, E):
-        if self.norm == 'percentile':
-            return np.stack([np.searchsorted(r, e, side='right') / len(r) for r, e in zip(self.ref, E)])
+    def _normalize(self, E, norm):
+        if norm == 'percentile':
+            return np.stack([self._percentile(r, e) for r, e in zip(self.ref, E)])
         return (E - self.ref_mu[:, None]) / self.ref_sd[:, None]
+
+    @staticmethod
+    def _percentile(r, e, tail=0.01):
+        """ID-reference percentile of e, strictly increasing everywhere.
+
+        Inside [r_min, r_max]: interpolated empirical CDF.  Outside it the CDF would saturate at 0 / 1,
+        which ties every sample beyond the reference (most OOD samples) and breaks the ranking, so it
+        is extended linearly with the slope of the outer `tail` fraction of the reference.
+        """
+        n = len(r)
+        p = np.interp(e, r, np.arange(1, n + 1) / n)
+        k = max(1, int(tail * n))
+        hi = tail / max(r[-1] - r[-1 - k], 1e-12)      # dp/de over the top tail
+        lo = tail / max(r[k] - r[0], 1e-12)            # dp/de over the bottom tail
+        p = np.where(e > r[-1], 1 + (e - r[-1]) * hi, p)
+        return np.where(e < r[0], 1 / n - (r[0] - e) * lo, p)
 
     def scores(self, x, stage1_out=None):
         _, E = (stage1_out or self.stage1.transform(x))['corp']
-        return {f'CoRP_Ens_{self.norm}': -(self.w[:, None] * self._normalize(E)).sum(0)}
+        return {f'CoRP_Ens_{n}': -(self.w[:, None] * self._normalize(E, n)).sum(0) for n in self.NORMS}
 
 
 class MultiKernelOOD:
@@ -168,7 +189,7 @@ class MultiKernelOOD:
         m = cfg.model
         self.stage1 = MultiHead(gammas, cfg.kernel.M, m.exp_var_ratio, m.mhksa_evr1, dim, rng)
         self.mhksa = MHKSA(self.stage1, m.mhksa_evr2)
-        self.ens = CoRPEnsemble(self.stage1, m.ens_norm, m.ens_weights)
+        self.ens = CoRPEnsemble(self.stage1, m.ens_weights)
 
     def fit(self, x_train, x_calib=None):
         out = self.stage1.fit_transform(x_train)

@@ -1,13 +1,13 @@
-"""Plot MHKSA [2] / best-head [2-variant] results from evaluate.py CSVs.
+"""Plot MHKSA [2] / best-head [2-variant] / ensemble [3] results from evaluate.py CSVs.
 
     python scripts/plot_results.py                       # auto-find logs/*-ce-* and logs/*-supcon-*
     python scripts/plot_results.py --h 3 --out figures   # per-OOD bars at H = 3
     python scripts/plot_results.py --ce logs/<run> --supcon logs/<run>
 
 Reads  every <run>/results*.csv written by evaluate.py (results.csv, results_mhksa.csv, results_best_head.csv, ...).
-Writes <out>/fig1_vs_heads.png      FPR95 / AUROC vs number of heads (MHKSA, best head LOO, baseline)
+Writes <out>/fig1_vs_heads.png      FPR95 / AUROC vs number of heads (MHKSA, best head LOO, ensemble, baseline)
        <out>/fig2_mhksa_parts.png   MHKSA vs stage-1-only / stage-2-only error
-       <out>/fig3_per_ood_H{h}.png  per-OOD FPR95 at one H (baseline vs MHKSA vs best head LOO)
+       <out>/fig3_per_ood_H{h}.png  per-OOD FPR95 at one H (baseline vs MHKSA vs best head LOO vs ensemble)
        <out>/summary.md             every plotted number as a table (mean ± std over seeds)
 """
 import os
@@ -28,6 +28,8 @@ STYLE = {   # method -> (label, colour, marker, linestyle)
     'MHKSA':            ('MHKSA [2]',                  '#2a78d6', 'o', '-'),
     'best_head_loo':    ('Best head, LOO [2-var]',     '#eb6834', 's', '-'),
     'best_head_oracle': ('Best head, oracle [2-var]',  '#1baf7a', '^', '--'),
+    'CoRP_Ens_percentile': ('Ensemble, percentile [3]', '#1baf7a', '^', '-'),
+    'CoRP_Ens_zscore':  ('Ensemble, z-score [3]',      '#1baf7a', 'v', '--'),
     'MHKSA_e1only':     ('Stage-1 error only',         '#eda100', 'D', '-'),
     'MHKSA_e2only':     ('Stage-2 error only',         '#e87ba4', 'v', '-'),
 }
@@ -127,7 +129,7 @@ def save(fig, out, name):
 
 # ---------------------------------------------------------------- figures
 def fig_vs_heads(data, out):
-    methods = ['MHKSA', 'best_head_loo']     # oracle (picked on the test OOD sets) is left out of the plots
+    methods = ['MHKSA', 'best_head_loo', 'CoRP_Ens_percentile']   # oracle (picked on the test OOD sets) is left out of the plots
     fig, axes = plt.subplots(2, len(data), figsize=(5.4 * len(data), 7.2), squeeze=False)
     for j, (mode, title, d) in enumerate(data):
         Hs = heads_of(d)
@@ -193,7 +195,8 @@ def fig_mhksa_parts(data, out):
 def fig_per_ood(data, out, H):
     bars = [('single_head', 1, 'Baseline (H=1 head)', BASE),
             ('MHKSA', H, f'MHKSA, H={H}', STYLE['MHKSA'][1]),
-            ('best_head_loo', H, f'Best head LOO, H={H}', STYLE['best_head_loo'][1])]
+            ('best_head_loo', H, f'Best head LOO, H={H}', STYLE['best_head_loo'][1]),
+            ('CoRP_Ens_percentile', H, f'Ensemble, H={H}', STYLE['CoRP_Ens_percentile'][1])]
     fig, axes = plt.subplots(1, len(data), figsize=(5.6 * len(data), 3.8), squeeze=False)
     for j, (mode, title, d) in enumerate(data):
         ax = axes[0, j]
@@ -214,7 +217,7 @@ def fig_per_ood(data, out, H):
         ax.set_ylabel('FPR95 (%) ↓')
         ax.set_title(f'{title} · per OOD set (H={H})')
     h, l = axes[0, 0].get_legend_handles_labels()
-    fig.legend(h, l, loc='upper center', ncol=3, bbox_to_anchor=(0.5, 1.06), fontsize=9)
+    fig.legend(h, l, loc='upper center', ncol=4, bbox_to_anchor=(0.5, 1.06), fontsize=9)
     fig.tight_layout(w_pad=3)
     save(fig, out, f'fig3_per_ood_H{H}.png')
 
@@ -223,7 +226,8 @@ def summary_md(data, out, H):
     lines = ['# Results summary (mean ± std over seeds; FPR95 ↓ / AUROC ↑, %)', '']
     for mode, title, d in data:
         Hs = heads_of(d)
-        cols = [m for m in ['MHKSA', 'MHKSA_e1only', 'MHKSA_e2only', 'best_head_oracle', 'best_head_loo']
+        cols = [m for m in ['MHKSA', 'MHKSA_e1only', 'MHKSA_e2only', 'best_head_oracle', 'best_head_loo',
+                            'CoRP_Ens_percentile', 'CoRP_Ens_zscore']
                 if stat(d, m, Hs[-1])[2]]
         mu, sd, _ = stat(d, 'single_head', 1)
         au = stat(d, 'single_head', 1, col=1)[0]
@@ -239,7 +243,8 @@ def summary_md(data, out, H):
         lines += ['', f'Per OOD set, FPR95 at H={H}:', '', '| method | ' + ' | '.join(OOD_ORDER) + ' |',
                   '| --- |' + ' --- |' * len(OOD_ORDER)]
         for m, h, lab in [('single_head', 1, 'Baseline (H=1)'), ('MHKSA', H, f'MHKSA (H={H})'),
-                          ('best_head_loo', H, f'Best head LOO (H={H})')]:
+                          ('best_head_loo', H, f'Best head LOO (H={H})'),
+                          ('CoRP_Ens_percentile', H, f'Ensemble percentile (H={H})')]:
             if stat(d, m, h)[2]:
                 lines.append(f'| {lab} | ' + ' | '.join('{:.2f} ± {:.2f}'.format(*stat(d, m, h, o)[:2])
                                                        for o in OOD_ORDER) + ' |')
