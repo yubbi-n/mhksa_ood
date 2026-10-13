@@ -43,10 +43,10 @@ STYLE = {   # method -> (label, colour, marker, linestyle)
     'CoRP_Ens_zscore':  ('Ensemble, z-score [3]',      '#1baf7a', 'v', '--'),
     'Comb_MHKSA_norm':  ('MHKSA, per-head scaled',     '#eb6834', 's', '-'),
     'Comb_Ens_max':     ('Ensemble, max (z-score)',    '#eda100', 'D', '-'),
-    'MHKSA_s1corp_s20.7': ('MHKSA, s1 0.7 / s2 0.7', '#eb6834', 's', '-'),
-    'MHKSA_s1corp_s20.8': ('MHKSA, s1 0.8 / s2 0.8', '#eb6834', 's', '-'),
-    'MHKSA_s1corp_s20.9': ('MHKSA, s1 CoRP / s2 0.9', '#1baf7a', '^', '-'),
-    'MHKSA_s1corp_s21':   ('MHKSA, s1 CoRP / s2 1.0 (no stage 2)', '#eda100', 'D', '-'),
+    'MHKSA_s1corp_s20.7': ('MHKSA, s1 = CoRP ratio, s2 = 0.7', '#eb6834', 's', '-'),
+    'MHKSA_s1corp_s20.8': ('MHKSA, s1 = CoRP ratio, s2 = 0.8', '#eb6834', 's', '-'),
+    'MHKSA_s1corp_s20.9': ('MHKSA, s1 = CoRP ratio, s2 = 0.9', '#1baf7a', '^', '-'),
+    'MHKSA_s1corp_s21':   ('MHKSA, s1 = CoRP ratio, no stage 2', '#eda100', 'D', '-'),
     'MHKSA_e1only':     ('Stage-1 error only',         '#eda100', 'D', '-'),
     'MHKSA_e2only':     ('Stage-2 error only',         '#e87ba4', 'v', '-'),
 }
@@ -295,8 +295,10 @@ def fig_vs_ref(data, refs, out, methods):
         label_ends(ax, Hs, ends)
         ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.14), ncol=2, fontsize=9)
         h1 = stat(d, 'single_head', 1)[0]
+        note = (f'\nMHKSA [2]: stage-1 / stage-2 PCA ratio {"0.9" if mode == "ce" else "0.84"} each; '
+                f'CoRP ratio = {"0.8" if mode == "ce" else "0.7"}.' if any(m.startswith('MHKSA_s1corp') for m in meths) else '')
         fig.text(0.01, -0.02, f'CIFAR10 · ResNet18. Mean ± std over seeds, averaged over 5 OOD sets. '
-                 f'H = 1 (single head, {base_label(title)}) = {h1:.2f}, not shown.', fontsize=8.5, color=INK2)
+                 f'H = 1 (single head, {base_label(title)}) = {h1:.2f}, not shown.' + note, fontsize=8.5, color=INK2, va='top')
         fig.tight_layout()
         save(fig, out, f'fig5_{mode}_vs_ref.png')
 
