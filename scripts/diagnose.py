@@ -3,6 +3,7 @@
     python scripts/diagnose.py heads     --mode ce --cache <feature cache> [--gamma-base 2] [--set kernel.mult_max=10] [--seeds 0 1 2 3 4]
     python scripts/diagnose.py influence --mode ce --cache <feature cache> ...
 (the old environment variables still work as defaults: MODE, C, GB, EXTRA, SEEDS)
+Output: printed and saved to <out>/markdown/<heads|influence>_<mode>_<median|gb..>_m<min>-<max>.md (default <out> = results).
 
 heads      why combining heads does not beat the best head
              ① FPR95 of every single head, per OOD set
@@ -171,6 +172,18 @@ def influence(cfg, name, H, f_in, f_out, oods, SEEDS):
         print(f'| {al:.2f} | {gd:.2f} | {bd:.2f} | {al - gd:+.2f} |')
 
 
+class _Tee:
+    """print to the terminal and to the Markdown file."""
+    def __init__(self, f, s):
+        self.f, self.s = f, s
+
+    def write(self, m):
+        self.f.write(m); self.s.write(m)
+
+    def flush(self):
+        self.f.flush(); self.s.flush()
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('what', choices=['heads', 'influence'])
@@ -179,6 +192,7 @@ def main():
     ap.add_argument('--gamma-base', default=os.environ.get('GB', ''), help='fixed base gamma run (kernel.gamma_base)')
     ap.add_argument('--set', nargs='*', default=os.environ.get('EXTRA', '').split(), help='extra config overrides')
     ap.add_argument('--seeds', nargs='*', type=int, default=[int(s) for s in os.environ.get('SEEDS', '0 1 2 3 4').split()])
+    ap.add_argument('--out', default='results', help='Markdown goes to <out>/markdown/')
     a = ap.parse_args()
     if not a.mode or not a.cache:
         ap.error('--mode and --cache are required (or MODE / C in the environment)')
@@ -187,8 +201,15 @@ def main():
     name = run_name(cfg)
     H = max(cfg.kernel.heads)
     f_in, f_out = load_eval(cfg)
+    base = f'gb{a.gamma_base}' if a.gamma_base else 'median'
+    path = os.path.join(a.out, 'markdown', f'{a.what}_{a.mode}_{base}_m{cfg.kernel.mult_min}-{cfg.kernel.mult_max}.md')
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    sys.stdout = _Tee(open(path, 'w'), sys.stdout)
     print(f'# {a.what}: {a.mode}   run={name}   H={H}   seeds={a.seeds}\n')
     {'heads': heads, 'influence': influence}[a.what](cfg, name, H, f_in, f_out, list(f_out), a.seeds)
+    sys.stdout.f.close()
+    sys.stdout = sys.stdout.s
+    print(f'saved {path}')
 
 
 if __name__ == '__main__':

@@ -39,20 +39,23 @@ Method 3 (ensemble) only, on existing checkpoints (no retraining): `python evalu
 
 Tables and figures from the result CSVs (needs `matplotlib`; one script for all of them):
 ```bash
-python scripts/plot_results.py --ce logs/<ce run> --supcon logs/<supcon run> --out figures
+python scripts/plot_results.py --ce logs/<ce run> --supcon logs/<supcon run>
 # + a reference line (H = 1 single head of another run, e.g. the tuned-gamma runs) in fig5:
 python scripts/plot_results.py --ce logs/<ce run> --supcon logs/<supcon run> \
-    --ref-ce logs/<ce run>-gb2 --ref-supcon logs/<supcon run>-gb1 --out figures
+    --ref-ce logs/<ce run>-gb2 --ref-supcon logs/<supcon run>-gb1
 ```
 → `fig1_vs_heads` (FPR / AUROC vs H), `fig2_mhksa_parts` (stage-1 / stage-2), `fig3_per_ood_H{h}` (bars, `--h`),
 `fig4_combine` (if `combine` was evaluated), `fig5_{ce,supcon}_vs_ref` (`--compare` methods vs the reference line),
 `fig6_{mode}_{method}_per_ood` (one line per OOD set, `--per-ood` methods), `summary.md`, `per_dataset.md`.
-Without `--ce` / `--supcon` the newest `logs/*-ce-*` / `logs/*-supcon-*` are used.
+Figures go to `results/graph/`, tables to `results/markdown/` (`--out` changes `results`); every file name ends with a
+tag naming the runs (e.g. `_median_m0.3-10`, `--tag` to override). Without `--ce` / `--supcon` the newest
+`logs/*-ce-*` / `logs/*-supcon-*` are used.
 
-Checkpoint-based analyses (largest-H checkpoints, Markdown on stdout):
+Checkpoint-based analyses (largest-H checkpoints):
 ```bash
-python scripts/diagnose.py heads     --mode ce --cache /path/to/cache [--set kernel.mult_max=10] [--gamma-base 2] > diag_ce.md
-python scripts/diagnose.py influence --mode ce --cache /path/to/cache [--set kernel.mult_max=10] [--gamma-base 2] > infl_ce.md
+python scripts/diagnose.py heads     --mode ce --cache /path/to/cache [--set kernel.mult_max=10] [--gamma-base 2]
+python scripts/diagnose.py influence --mode ce --cache /path/to/cache [--set kernel.mult_max=10] [--gamma-base 2]
+# -> results/markdown/<heads|influence>_<mode>_<median|gb..>_m<min>-<max>.md (also printed)
 ```
 `heads`: single heads per OOD set, raw-sum / z-mean / z-max on the same heads, oracle pair and greedy subsets
 (upper bound), head score correlations. `influence`: per-head weight / signal / noise shares, leave-one-head-out,

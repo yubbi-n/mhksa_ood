@@ -1,12 +1,14 @@
 """All result tables and figures from evaluate.py CSVs (no checkpoints needed; for those see scripts/diagnose.py).
 
-    python scripts/plot_results.py --ce logs/<run> --supcon logs/<run> --out figures
+    python scripts/plot_results.py --ce logs/<run> --supcon logs/<run>
     python scripts/plot_results.py --ce logs/<run> --supcon logs/<run> --ref-ce logs/<tuned run> --ref-supcon logs/<tuned run>
     python scripts/plot_results.py --h 3 --compare MHKSA,CoRP_Ens_zscore --per-ood MHKSA,CoRP_Ens_zscore
 (without --ce / --supcon the newest logs/*-ce-* and logs/*-supcon-* are used)
 
 Reads  every <run>/results*.csv written by evaluate.py (results.csv, results_mhksa.csv, results_best_head.csv, ...).
-Writes <out>/fig1_vs_heads.png          FPR95 / AUROC vs number of heads (MHKSA, best head LOO, ensemble, baseline)
+Writes figures to <out>/graph/ and tables to <out>/markdown/ (default <out> = results). Every file name ends with
+a tag that names the runs (e.g. _median_m0.3-10, _gb2-gb1_m0.3-3; set it with --tag), so runs do not overwrite each other.
+       <out>/fig1_vs_heads.png          FPR95 / AUROC vs number of heads (MHKSA, best head LOO, ensemble, baseline)
        <out>/fig2_mhksa_parts.png       MHKSA vs stage-1-only / stage-2-only error
        <out>/fig3_per_ood_H{h}.png      per-OOD FPR95 at one H (baseline vs MHKSA vs best head LOO vs ensemble)
        <out>/fig4_combine.png           head-combination variants (run.methods=[combine]) vs MHKSA / ensemble
@@ -146,8 +148,18 @@ def label_ends(ax, Hs, ends):
                     fontsize=8.5, color=INK2, annotation_clip=False)
 
 
+TAG = ['']           # file-name suffix, set in main()
+
+
+def out_path(out, kind, name):
+    """<out>/graph/<stem><tag>.png  or  <out>/markdown/<stem><tag>.md"""
+    stem, ext = os.path.splitext(name)
+    os.makedirs(os.path.join(out, kind), exist_ok=True)
+    return os.path.join(out, kind, f'{stem}{TAG[0]}{ext}')
+
+
 def save(fig, out, name):
-    path = os.path.join(out, name)
+    path = out_path(out, 'graph', name)
     fig.savefig(path, dpi=200, bbox_inches='tight')
     plt.close(fig)
     print('saved', path)
@@ -339,7 +351,7 @@ def per_dataset_md(data, out, methods):
                     cells.append(f'{f:.2f} ± {fs:.2f} / {a:.2f}' if n else '-')
                 lines.append(f'| {lab} | ' + ' | '.join(cells) + ' |')
             lines.append('')
-    path = os.path.join(out, 'per_dataset.md')
+    path = out_path(out, 'markdown', 'per_dataset.md')
     open(path, 'w').write('\n'.join(lines))
     print('saved', path)
 
@@ -371,7 +383,7 @@ def summary_md(data, out, H):
                 lines.append(f'| {lab} | ' + ' | '.join('{:.2f} ± {:.2f}'.format(*stat(d, m, h, o)[:2])
                                                        for o in OOD_ORDER) + ' |')
         lines.append('')
-    path = os.path.join(out, 'summary.md')
+    path = out_path(out, 'markdown', 'summary.md')
     open(path, 'w').write('\n'.join(lines))
     print('saved', path)
 
@@ -386,9 +398,9 @@ def main():
     ap.add_argument('--ref-supcon', default=None, help='reference run for SupCon in fig5')
     ap.add_argument('--compare', default='MHKSA,CoRP_Ens_percentile,CoRP_Ens_zscore', help='methods in fig5')
     ap.add_argument('--per-ood', default='MHKSA,best_head_loo,CoRP_Ens_zscore', help='methods in fig6 / per_dataset.md')
-    ap.add_argument('--out', default='figures')
+    ap.add_argument('--out', default='results', help='figures go to <out>/graph, tables to <out>/markdown')
+    ap.add_argument('--tag', default=None, help='file-name suffix (default: from the run names, e.g. median_m0.3-10)')
     a = ap.parse_args()
-    os.makedirs(a.out, exist_ok=True)
 
     data = []
     for mode, title in MODES:
@@ -399,6 +411,11 @@ def main():
             data.append((mode, title, load(run)))
     if not data:
         raise SystemExit(f'no results_*.csv found under {a.logs}/')
+    if a.tag is None:
+        bases = '-'.join(dict.fromkeys('median' if base_label(t) == 'median γ' else 'gb' + base_label(t)[2:] for _, t, _ in data))
+        ranges = '-'.join(dict.fromkeys('m' + '-'.join(MULT_RANGE.get(t, ('0.3', '3'))) for _, t, _ in data))
+        a.tag = f'{bases}_{ranges}'
+    TAG[0] = f'_{a.tag}' if a.tag else ''
 
     fig_vs_heads(data, a.out)
     if any(stat(d, 'Comb_MHKSA_norm', h)[2] for _, _, d in data for h in heads_of(d)):
