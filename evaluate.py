@@ -8,19 +8,20 @@ methods reported per (seed, H)  (select with run.methods, e.g. --set run.methods
     best_head_oracle / best_head_loo                             [2-variant]
     CoRP_Ens_percentile / CoRP_Ens_zscore                        [3]
     Comb_MHKSA_norm / _norm_e1only / Comb_Ens_max                head-combination variants (src/combine.py)
+    MHKSA_s1corp_s2<r>                                           MHKSA, stage 1 = CoRP ratio, stage 2 = r (src/combine.py)
 """
 import sys
 import argparse
 import numpy as np
 
 from src.config import load_config, run_name
-from src.combine import Combiner
+from src.combine import Combiner, MHKSACorpStage1
 from src.data import load_eval, load_id_train
 from src.metrics import evaluate_all, METRICS_SOURCE
 from src.selection import best_head_oracle, best_head_loo
 from src.utils import Tee, ckpt_path, load_pickle, write_csv
 
-ALL_METHODS = ['mhksa', 'best_head', 'ensemble', 'combine']     # the first three = the default full run (eval.log)
+ALL_METHODS = ['mhksa', 'best_head', 'ensemble', 'combine', 'mhksa_corp']     # the first three = the default full run (eval.log)
 
 
 def fmt_g(gs):
@@ -41,7 +42,8 @@ def main():
     print(f'\n==== eval: {name} ====  (FPR95 / AUROC, %)  metrics: {METRICS_SOURCE}  methods: {methods}')
 
     f_in, f_out = load_eval(cfg)
-    x_train = load_id_train(cfg) if 'combine' in methods else None
+    x_train = load_id_train(cfg) if {'combine', 'mhksa_corp'} & set(methods) else None
+    corp_ratios = cfg.model.get('mhksa_corp_s2') or [cfg.model.exp_var_ratio, 0.9, 1.0]
     oods = list(f_out)
     rows = []
 
@@ -64,11 +66,17 @@ def main():
                 ref = np.random.RandomState([seed, 2]).choice(len(x_train), min(cfg.model.combine_ref, len(x_train)), replace=False)
                 comb = Combiner(model, x_train[ref])
 
+            if 'mhksa_corp' in methods:
+                corp = MHKSACorpStage1(model, x_train, corp_ratios)
+                print(f"  MHKSA_s1corp: stage-2 q = {corp.q2}")
+
             def all_scores(x):
                 out = model.stage1.transform(x)
                 s = model.scores(x, out)
                 if 'combine' in methods:
                     s.update(comb.scores(x, out))
+                if 'mhksa_corp' in methods:
+                    s.update(corp.scores(x, out))
                 return s
 
             s_in = all_scores(f_in)
@@ -82,8 +90,9 @@ def main():
                     add(seed, H, 'single_head', [gammas[h]], per, avg, extra=f'head{h}_q{info["q1"][h]}')
 
             for mth in [k for k in s_in if not k.startswith('head')]:
-                if (mth.startswith('MHKSA') and 'mhksa' in methods) or (mth.startswith('CoRP_Ens') and 'ensemble' in methods) \
-                        or (mth.startswith('Comb_') and 'combine' in methods):
+                if (mth.startswith('MHKSA') and not mth.startswith('MHKSA_s1corp') and 'mhksa' in methods) or (mth.startswith('CoRP_Ens') and 'ensemble' in methods) \
+                        or (mth.startswith('Comb_') and 'combine' in methods) \
+                        or (mth.startswith('MHKSA_s1corp') and 'mhksa_corp' in methods):
                     per, avg = evaluate_all(s_in[mth], {n: s_out[n][mth] for n in oods})
                     add(seed, H, mth, gammas, per, avg, extra=f"q2={info['q2']}" if mth.startswith('MHKSA') else '')
 
@@ -101,7 +110,8 @@ def main():
     cols = (['MHKSA', 'MHKSA_e1only', 'MHKSA_e2only'] if 'mhksa' in methods else []) \
         + (['best_head_oracle', 'best_head_loo'] if 'best_head' in methods else []) \
         + (['CoRP_Ens_percentile', 'CoRP_Ens_zscore'] if 'ensemble' in methods else []) \
-        + (['Comb_MHKSA_norm', 'Comb_MHKSA_norm_e1only', 'Comb_Ens_max'] if 'combine' in methods else [])
+        + (['Comb_MHKSA_norm', 'Comb_MHKSA_norm_e1only', 'Comb_Ens_max'] if 'combine' in methods else []) \
+        + ([f'MHKSA_s1corp_s2{float(r):g}' for r in corp_ratios] if 'mhksa_corp' in methods else [])
     print('\n==== summary: AVG over OOD sets, mean±std over seeds (FPR95 / AUROC) ====')
     print(f"{'H':>3s} " + ' '.join(f'{m[:20]:>22s}' for m in cols))
     for H in cfg.kernel.heads:

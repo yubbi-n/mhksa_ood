@@ -43,6 +43,10 @@ STYLE = {   # method -> (label, colour, marker, linestyle)
     'CoRP_Ens_zscore':  ('Ensemble, z-score [3]',      '#1baf7a', 'v', '--'),
     'Comb_MHKSA_norm':  ('MHKSA, per-head scaled',     '#eb6834', 's', '-'),
     'Comb_Ens_max':     ('Ensemble, max (z-score)',    '#eda100', 'D', '-'),
+    'MHKSA_s1corp_s20.7': ('MHKSA, s1 0.7 / s2 0.7', '#eb6834', 's', '-'),
+    'MHKSA_s1corp_s20.8': ('MHKSA, s1 0.8 / s2 0.8', '#eb6834', 's', '-'),
+    'MHKSA_s1corp_s20.9': ('MHKSA, s1 CoRP / s2 0.9', '#1baf7a', '^', '-'),
+    'MHKSA_s1corp_s21':   ('MHKSA, s1 CoRP / s2 1.0 (no stage 2)', '#eda100', 'D', '-'),
     'MHKSA_e1only':     ('Stage-1 error only',         '#eda100', 'D', '-'),
     'MHKSA_e2only':     ('Stage-2 error only',         '#e87ba4', 'v', '-'),
 }
@@ -363,7 +367,8 @@ def summary_md(data, out, H):
     for mode, title, d in data:
         Hs = heads_of(d)
         cols = [m for m in ['MHKSA', 'MHKSA_e1only', 'MHKSA_e2only', 'best_head_oracle', 'best_head_loo',
-                            'CoRP_Ens_percentile', 'CoRP_Ens_zscore', 'Comb_MHKSA_norm', 'Comb_MHKSA_norm_e1only', 'Comb_Ens_max']
+                            'CoRP_Ens_percentile', 'CoRP_Ens_zscore', 'Comb_MHKSA_norm', 'Comb_MHKSA_norm_e1only', 'Comb_Ens_max',
+                            'MHKSA_s1corp_s20.7', 'MHKSA_s1corp_s20.8', 'MHKSA_s1corp_s20.9', 'MHKSA_s1corp_s21']
                 if stat(d, m, Hs[-1])[2]]
         mu, sd, _ = stat(d, 'single_head', 1)
         au = stat(d, 'single_head', 1, col=1)[0]

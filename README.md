@@ -103,6 +103,7 @@ Overrides: `--set kernel.heads=[1,5,10] run.seeds=[0] kernel.gamma_spacing=linea
 | `CoRP_Ens_zscore` | [3] same, with (error − ID mean) / ID std per head |
 | `Comb_MHKSA_norm` | MHKSA with every stage-1 residual and the stage-2 residual divided by its ID RMS (all H+1 terms weigh the same); `_e1only`: stage-1 terms only |
 | `Comb_Ens_max` | ensemble with max over heads of the per-head z-score instead of the mean |
+| `MHKSA_s1corp_s2<r>` | MHKSA with stage 1 = the CoRP ratio (0.8 CE / 0.7 SupCon, same residuals as the single heads) and stage 2 refitted with ratio r on ID train; r = 1.0 = no stage 2 (`run.methods=[mhksa_corp]`, ratios `model.mhksa_corp_s2`, default [CoRP ratio, 0.9, 1.0]) |
 
 Gamma (senior's MHKSA): γ_h = γ_med · m_h, γ_med = 1/(2·med²) from the median heuristic (once per seed, shared by all H).
 H = 1 → m = 1 (pure median heuristic); H ≥ 2 → m_h over [mult_min, mult_max] = [0.3, 3] (log-spaced).
