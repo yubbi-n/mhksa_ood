@@ -1,7 +1,9 @@
 """All result tables and figures from evaluate.py CSVs (no checkpoints needed; for those see scripts/diagnose.py).
 
     python scripts/plot_results.py --ce logs/<run> --supcon logs/<run>
-    python scripts/plot_results.py --ce logs/<run> --supcon logs/<run> --ref-ce logs/<tuned run> --ref-supcon logs/<tuned run>
+    python scripts/plot_results.py --ce logs/<run> --supcon logs/<run> --ref-ce logs/<tuned run> --ref-supcon logs/<tuned run> --figs vs_ref
+--figs picks what to write (comma separated): vs_heads, mhksa_parts, per_ood, combine, summary (the default set),
+vs_ref, per_ood_lines, per_dataset (only when asked for), or all.
     python scripts/plot_results.py --h 3 --compare MHKSA,CoRP_Ens_zscore --per-ood MHKSA,CoRP_Ens_zscore
 (without --ce / --supcon the newest logs/*-ce-* and logs/*-supcon-* are used)
 
@@ -398,6 +400,8 @@ def main():
     ap.add_argument('--ref-supcon', default=None, help='reference run for SupCon in fig5')
     ap.add_argument('--compare', default='MHKSA,CoRP_Ens_percentile,CoRP_Ens_zscore', help='methods in fig5')
     ap.add_argument('--per-ood', default='MHKSA,best_head_loo,CoRP_Ens_zscore', help='methods in fig6 / per_dataset.md')
+    ap.add_argument('--figs', default='vs_heads,mhksa_parts,per_ood,combine,summary',
+                    help='what to write: vs_heads, mhksa_parts, per_ood, combine, summary, vs_ref, per_ood_lines, per_dataset, all')
     ap.add_argument('--out', default='results', help='figures go to <out>/graph, tables to <out>/markdown')
     ap.add_argument('--tag', default=None, help='file-name suffix (default: from the run names, e.g. median_m0.3-10)')
     a = ap.parse_args()
@@ -417,11 +421,19 @@ def main():
         a.tag = f'{bases}_{ranges}'
     TAG[0] = f'_{a.tag}' if a.tag else ''
 
-    fig_vs_heads(data, a.out)
-    if any(stat(d, 'Comb_MHKSA_norm', h)[2] for _, _, d in data for h in heads_of(d)):
+    ALL = ['vs_heads', 'mhksa_parts', 'per_ood', 'combine', 'summary', 'vs_ref', 'per_ood_lines', 'per_dataset']
+    want = ALL if a.figs == 'all' else a.figs.split(',')
+    bad = set(want) - set(ALL)
+    if bad:
+        ap.error(f'unknown --figs {sorted(bad)}; choose from {ALL} or all')
+    if 'vs_heads' in want:
+        fig_vs_heads(data, a.out)
+    if 'combine' in want and any(stat(d, 'Comb_MHKSA_norm', h)[2] for _, _, d in data for h in heads_of(d)):
         fig_vs_heads(data, a.out, ('MHKSA', 'Comb_MHKSA_norm', 'CoRP_Ens_zscore', 'Comb_Ens_max'), 'fig4_combine.png')
-    fig_mhksa_parts(data, a.out)
-    fig_per_ood(data, a.out, a.h)
+    if 'mhksa_parts' in want:
+        fig_mhksa_parts(data, a.out)
+    if 'per_ood' in want:
+        fig_per_ood(data, a.out, a.h)
     refs = {}
     for mode, title in MODES:
         r = getattr(a, f'ref_{mode}')
@@ -429,10 +441,14 @@ def main():
             g = os.path.basename(os.path.normpath(r)).split('-gb')
             lab = f"γ={g[1].split('-')[0].split('_')[0]}" if len(g) > 1 else 'median γ'
             refs[mode] = (load(r), f'Tuned KPCA ({lab})' if len(g) > 1 else f'KPCA ({lab})')
-    fig_vs_ref(data, refs, a.out, a.compare.split(','))
-    fig_per_ood_lines(data, a.out, a.per_ood.split(','))
-    summary_md(data, a.out, a.h)
-    per_dataset_md(data, a.out, a.per_ood.split(','))
+    if 'vs_ref' in want:
+        fig_vs_ref(data, refs, a.out, a.compare.split(','))
+    if 'per_ood_lines' in want:
+        fig_per_ood_lines(data, a.out, a.per_ood.split(','))
+    if 'summary' in want:
+        summary_md(data, a.out, a.h)
+    if 'per_dataset' in want:
+        per_dataset_md(data, a.out, a.per_ood.split(','))
 
 
 if __name__ == '__main__':

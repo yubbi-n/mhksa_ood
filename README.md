@@ -42,11 +42,13 @@ Tables and figures from the result CSVs (needs `matplotlib`; one script for all 
 python scripts/plot_results.py --ce logs/<ce run> --supcon logs/<supcon run>
 # + a reference line (H = 1 single head of another run, e.g. the tuned-gamma runs) in fig5:
 python scripts/plot_results.py --ce logs/<ce run> --supcon logs/<supcon run> \
-    --ref-ce logs/<ce run>-gb2 --ref-supcon logs/<supcon run>-gb1
+    --ref-ce logs/<ce run>-gb2 --ref-supcon logs/<supcon run>-gb1 --figs vs_ref
 ```
 → `fig1_vs_heads` (FPR / AUROC vs H), `fig2_mhksa_parts` (stage-1 / stage-2), `fig3_per_ood_H{h}` (bars, `--h`),
 `fig4_combine` (if `combine` was evaluated), `fig5_{ce,supcon}_vs_ref` (`--compare` methods vs the reference line),
 `fig6_{mode}_{method}_per_ood` (one line per OOD set, `--per-ood` methods), `summary.md`, `per_dataset.md`.
+`--figs` picks what is written: `vs_heads, mhksa_parts, per_ood, combine, summary` by default; `vs_ref` (fig5),
+`per_ood_lines` (fig6) and `per_dataset` only when listed; `all` for everything.
 Figures go to `results/graph/`, tables to `results/markdown/` (`--out` changes `results`); every file name ends with a
 tag naming the runs (e.g. `_median_m0.3-10`, `--tag` to override). Without `--ce` / `--supcon` the newest
 `logs/*-ce-*` / `logs/*-supcon-*` are used.
