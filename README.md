@@ -62,6 +62,7 @@ python scripts/diagnose.py influence --mode ce --cache /path/to/cache [--set ker
 `heads`: single heads per OOD set, raw-sum / z-mean / z-max on the same heads, oracle pair and greedy subsets
 (upper bound), head score correlations. `influence`: per-head weight / signal / noise shares, leave-one-head-out,
 better vs worse half. Oracle subsets and halves are chosen on the test OOD sets: analysis only, not methods.
+`python scripts/plot_influence.py <influence reports...>` draws the leave-one-head-out bars (`results/graph/influence_loo_<rule>.png`).
 
 Image-level views (`torchvision` for images; `heatmap` also needs `torch`, the ood-kernel-pca repo and its ResNet18 checkpoint):
 ```bash
