@@ -17,7 +17,7 @@ src/
   utils.py       seed, logger, checkpoint, csv
 train.py         fit on ID train -> checkpoints/<run>/seed{s}_H{H}.pkl
 evaluate.py      load checkpoints -> logs/<run>/{eval.log, results.csv} + summary table
-scripts/run_c10.sh, run_parallel.sh, plot_results.py, visualize_images.py
+scripts/run_c10.sh, run_parallel.sh, plot_results.py, diagnose.py, visualize_images.py
 ```
 
 ## Run
@@ -37,11 +37,26 @@ Method 2 (MHKSA) only: add `run.methods=[mhksa]` to evaluate.py (training is ide
 Head-combination variants (`src/combine.py`), on existing checkpoints: `--set run.methods=[combine]` → `eval_combine.log`, `results_combine.csv`; `plot_results.py` then also writes `fig4_combine.png`.
 Method 3 (ensemble) only, on existing checkpoints (no retraining): `python evaluate.py --config ... --set run.methods=[ensemble]` (add `kernel.gamma_base=2` etc. for a fixed-base run) → `eval_ensemble.log`, `results_ensemble.csv`.
 
-Plots (needs `matplotlib`): reads `logs/*-ce-*/results_*.csv` and `logs/*-supcon-*/results_*.csv`
+Tables and figures from the result CSVs (needs `matplotlib`; one script for all of them):
 ```bash
-python scripts/plot_results.py            # -> figures/fig1_vs_heads.png, fig2_mhksa_parts.png, fig3_per_ood_H2.png, summary.md
-python scripts/plot_results.py --h 3      # per-OOD bars at H = 3
+python scripts/plot_results.py --ce logs/<ce run> --supcon logs/<supcon run> --out figures
+# + a reference line (H = 1 single head of another run, e.g. the tuned-gamma runs) in fig5:
+python scripts/plot_results.py --ce logs/<ce run> --supcon logs/<supcon run> \
+    --ref-ce logs/<ce run>-gb2 --ref-supcon logs/<supcon run>-gb1 --out figures
 ```
+→ `fig1_vs_heads` (FPR / AUROC vs H), `fig2_mhksa_parts` (stage-1 / stage-2), `fig3_per_ood_H{h}` (bars, `--h`),
+`fig4_combine` (if `combine` was evaluated), `fig5_{ce,supcon}_vs_ref` (`--compare` methods vs the reference line),
+`fig6_{mode}_{method}_per_ood` (one line per OOD set, `--per-ood` methods), `summary.md`, `per_dataset.md`.
+Without `--ce` / `--supcon` the newest `logs/*-ce-*` / `logs/*-supcon-*` are used.
+
+Checkpoint-based analyses (largest-H checkpoints, Markdown on stdout):
+```bash
+python scripts/diagnose.py heads     --mode ce --cache /path/to/cache [--set kernel.mult_max=10] [--gamma-base 2] > diag_ce.md
+python scripts/diagnose.py influence --mode ce --cache /path/to/cache [--set kernel.mult_max=10] [--gamma-base 2] > infl_ce.md
+```
+`heads`: single heads per OOD set, raw-sum / z-mean / z-max on the same heads, oracle pair and greedy subsets
+(upper bound), head score correlations. `influence`: per-head weight / signal / noise shares, leave-one-head-out,
+better vs worse half. Oracle subsets and halves are chosen on the test OOD sets: analysis only, not methods.
 
 Image-level views (`torchvision` for images; `heatmap` also needs `torch`, the ood-kernel-pca repo and its ResNet18 checkpoint):
 ```bash

@@ -1,16 +1,22 @@
-"""Plot MHKSA [2] / best-head [2-variant] / ensemble [3] results from evaluate.py CSVs.
+"""All result tables and figures from evaluate.py CSVs (no checkpoints needed; for those see scripts/diagnose.py).
 
-    python scripts/plot_results.py                       # auto-find logs/*-ce-* and logs/*-supcon-*
-    python scripts/plot_results.py --h 3 --out figures   # per-OOD bars at H = 3
-    python scripts/plot_results.py --ce logs/<run> --supcon logs/<run>
+    python scripts/plot_results.py --ce logs/<run> --supcon logs/<run> --out figures
+    python scripts/plot_results.py --ce logs/<run> --supcon logs/<run> --ref-ce logs/<tuned run> --ref-supcon logs/<tuned run>
+    python scripts/plot_results.py --h 3 --compare MHKSA,CoRP_Ens_zscore --per-ood MHKSA,CoRP_Ens_zscore
+(without --ce / --supcon the newest logs/*-ce-* and logs/*-supcon-* are used)
 
 Reads  every <run>/results*.csv written by evaluate.py (results.csv, results_mhksa.csv, results_best_head.csv, ...).
-Writes <out>/fig1_vs_heads.png      FPR95 / AUROC vs number of heads (MHKSA, best head LOO, ensemble, baseline)
-       <out>/fig2_mhksa_parts.png   MHKSA vs stage-1-only / stage-2-only error
-       <out>/fig3_per_ood_H{h}.png  per-OOD FPR95 at one H (baseline vs MHKSA vs best head LOO vs ensemble)
-       <out>/fig4_combine.png       head-combination variants (run.methods=[combine]) vs MHKSA / ensemble
-       <out>/summary.md             every plotted number as a table (mean ± std over seeds)
+Writes <out>/fig1_vs_heads.png          FPR95 / AUROC vs number of heads (MHKSA, best head LOO, ensemble, baseline)
+       <out>/fig2_mhksa_parts.png       MHKSA vs stage-1-only / stage-2-only error
+       <out>/fig3_per_ood_H{h}.png      per-OOD FPR95 at one H (baseline vs MHKSA vs best head LOO vs ensemble)
+       <out>/fig4_combine.png           head-combination variants (run.methods=[combine]) vs MHKSA / ensemble
+       <out>/fig5_{mode}_vs_ref.png     one figure per backbone: --compare methods vs a reference line
+                                        (H = 1 single head of --ref-{mode}, e.g. the tuned-gamma run; else this run's own)
+       <out>/fig6_{mode}_{method}_per_ood.png   FPR95 / AUROC vs H, one line per OOD set (--per-ood methods)
+       <out>/summary.md                 every plotted number as a table (mean ± std over seeds)
+       <out>/per_dataset.md             per-OOD tables for the --per-ood methods, by backbone
 """
+import re
 import os
 import csv
 import glob
@@ -39,10 +45,26 @@ STYLE = {   # method -> (label, colour, marker, linestyle)
 OOD_ORDER = ['SVHN', 'LSUN', 'iSUN', 'Texture', 'places365']
 MODES = [('ce', 'CE'), ('supcon', 'SupCon')]
 BASE_GAMMA = {}       # mode title -> 'median γ' or 'γ=<value>' (from the run folder name, '-gb<value>')
+MULT_RANGE = {}       # mode title -> (mult_min, mult_max) (from the run folder name, '-m<min>_<max>log')
+SLOTS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4']   # categorical slots, fixed order
 
 
 def base_label(title):
     return BASE_GAMMA.get(title, 'median γ')
+
+
+def range_txt(title):
+    lo, hi = MULT_RANGE.get(title, ('0.3', '3'))
+    return f'[{lo}, {hi}]'
+
+
+def run_info(run, title):
+    name = os.path.basename(os.path.normpath(run))
+    gb = name.split('-gb')
+    BASE_GAMMA[title] = f"γ={gb[1].split('-')[0].split('_')[0]}" if len(gb) > 1 else 'median γ'
+    m = re.search(r'-m([\d.]+)_([\d.]+)(log|lin)', name)
+    if m:
+        MULT_RANGE[title] = (m.group(1), m.group(2))
 
 plt.rcParams.update({
     'figure.facecolor': SURFACE, 'axes.facecolor': SURFACE, 'savefig.facecolor': SURFACE,
@@ -68,9 +90,10 @@ def load(run):
     for path in sorted(glob.glob(os.path.join(run, 'results*.csv'))):
         for r in csv.DictReader(open(path)):
             key = (r['method'], int(r['H']), r['dataset'])
-            if (key, r['seed']) in seen:            # single_head H=1 appears in both files
+            uid = (key, r['seed'], r.get('extra', ''))   # extra tells the heads of one H apart (single_head)
+            if uid in seen:                              # single_head H=1 appears in every file
                 continue
-            seen.add((key, r['seed']))
+            seen.add(uid)
             d[key].append((float(r['FPR95']), float(r['AUROC'])))
     return d
 
@@ -153,9 +176,9 @@ def fig_vs_heads(data, out, methods=('MHKSA', 'best_head_loo', 'CoRP_Ens_percent
             label_ends(ax, Hs, ends)
     h, l = axes[0, 0].get_legend_handles_labels()
     fig.legend(h, l, loc='upper center', ncol=4, bbox_to_anchor=(0.5, 1.03), fontsize=9)
-    bases = ', '.join(f'{t} {base_label(t)}' for _, t, _ in data)
+    bases = ', '.join(f'{t} {base_label(t)} × {range_txt(t)}' for _, t, _ in data)
     fig.text(0.5, -0.01, f'CIFAR10 · ResNet18. Mean ± std over seeds, averaged over 5 OOD sets. '
-             f'Base γ ({bases}) is the H = 1 head; H ≥ 2 uses base × [0.3, 3] (log-spaced).',
+             f'The H = 1 head is the base γ; H ≥ 2 heads span base × range, log-spaced ({bases}).',
              ha='center', fontsize=8.5, color=INK2)
     fig.tight_layout(h_pad=1.5, w_pad=3)
     save(fig, out, name)
@@ -225,6 +248,102 @@ def fig_per_ood(data, out, H):
     save(fig, out, f'fig3_per_ood_H{H}.png')
 
 
+def fig_vs_ref(data, refs, out, methods):
+    """one figure per backbone: FPR95 vs H (H >= 2) for `methods`, against a reference line."""
+    for mode, title, d in data:
+        Hs = [h for h in heads_of(d) if h >= 2]
+        meths = [m for m in methods if any(stat(d, m, h)[2] for h in Hs)]
+        if not Hs or not meths:
+            continue
+        rd, rlab = refs.get(mode) or (d, f'Baseline KPCA ({base_label(title)})')
+        mu, sd, n = stat(rd, 'single_head', 1)
+        fig, ax = plt.subplots(figsize=(8.2, 4.8))
+        if n:
+            ax.axhspan(mu - sd, mu + sd, color=BASE, alpha=0.12, lw=0, zorder=1)
+            ax.axhline(mu, color=BASE, ls=(0, (5, 3)), lw=1.8, zorder=2, label=f'{rlab} ± std')
+        ends = []
+        for k, m in enumerate(meths):
+            v = np.array([stat(d, m, h)[:2] for h in Hs])
+            ax.errorbar(Hs, v[:, 0], yerr=v[:, 1], color=SLOTS[k % len(SLOTS)], marker='os^Dv'[k % 5], lw=2, ms=6.5,
+                        capsize=2.5, elinewidth=1, mec=SURFACE, mew=1.2, label=STYLE.get(m, (m,))[0], zorder=3)
+            ends.append((f'{v[-1, 0]:.2f}', v[-1, 0], SLOTS[k % len(SLOTS)]))
+        if n:
+            ends.append((f'{mu:.2f}', mu, BASE))
+        ax.set_xticks(Hs)
+        ax.set_xlim(Hs[0] - 0.4, Hs[-1] + 0.4)
+        ax.set_xlabel('Number of heads H')
+        ax.set_ylabel('FPR95 (%) ↓')
+        ax.set_title(f'{title} · heads γ = {base_label(title)} × {range_txt(title)}', loc='left', fontweight='bold')
+        label_ends(ax, Hs, ends)
+        ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.14), ncol=2, fontsize=9)
+        h1 = stat(d, 'single_head', 1)[0]
+        fig.text(0.01, -0.02, f'CIFAR10 · ResNet18. Mean ± std over seeds, averaged over 5 OOD sets. '
+                 f'H = 1 (single head, {base_label(title)}) = {h1:.2f}, not shown.', fontsize=8.5, color=INK2)
+        fig.tight_layout()
+        save(fig, out, f'fig5_{mode}_vs_ref.png')
+
+
+def ood_sets(d):
+    return [o for o in OOD_ORDER if any(k[2] == o for k in d)] or sorted({k[2] for k in d} - {'AVG'})
+
+
+def fig_per_ood_lines(data, out, methods):
+    """per backbone and method: FPR95 / AUROC vs H, one line per OOD set (+ AVG), baseline at x = 0."""
+    for mode, title, d in data:
+        Hs = heads_of(d)
+        groups = ood_sets(d) + ['AVG']
+        cols = SLOTS[:len(groups) - 1] + [INK]
+        for m in [m for m in methods if any(stat(d, m, h)[2] for h in Hs)]:
+            fig, axes = plt.subplots(1, 2, figsize=(12, 4.4))
+            for ax, col, lab in [(axes[0], 0, 'FPR95 (%) ↓'), (axes[1], 1, 'AUROC (%) ↑')]:
+                for g, c in zip(groups, cols):
+                    v = np.array([stat(d, m, h, g, col)[:2] for h in Hs])
+                    ax.plot(Hs, v[:, 0], color=c, lw=2.6 if g == 'AVG' else 2, marker='o', ms=4.5, mec=SURFACE,
+                            label='Places365' if g == 'places365' else g, zorder=3)
+                    if col == 0:
+                        ax.fill_between(Hs, v[:, 0] - v[:, 1], v[:, 0] + v[:, 1], color=c, alpha=0.1, lw=0, zorder=1)
+                    b = stat(d, 'single_head', 1, g, col)[0]
+                    ax.plot([0], [b], marker='D', ms=7, mfc=SURFACE, mec=c, mew=2, ls='', zorder=4)
+                ax.axvline(0.5, color=GRID, lw=1.2)
+                ax.set_xticks([0] + Hs)
+                ax.set_xticklabels(['Base'] + [str(h) for h in Hs])
+                ax.set_xlim(-0.6, Hs[-1] + 0.5)
+                ax.set_xlabel('Number of heads H')
+                ax.set_ylabel(lab)
+            h, l = axes[0].get_legend_handles_labels()
+            fig.legend(h, l, loc='upper center', ncol=len(groups), bbox_to_anchor=(0.5, 1.02), fontsize=9)
+            fig.suptitle(f'{title} · {STYLE.get(m, (m,))[0]} · heads γ = {base_label(title)} × {range_txt(title)}',
+                         y=1.08, fontweight='bold')
+            fig.text(0.5, -0.03, '◇ = baseline single head (H = 1)   shaded = ±1 std over seeds (FPR)   AVG = mean of the OOD sets',
+                     ha='center', fontsize=8.5, color=INK2)
+            fig.tight_layout()
+            save(fig, out, f'fig6_{mode}_{m}_per_ood.png')
+
+
+def per_dataset_md(data, out, methods):
+    lines = ['# Per OOD set (mean ± std over seeds; FPR95 ↓ / AUROC ↑, %)', '',
+             'Baseline row = single head at H = 1. AVG = mean over the OOD sets.', '']
+    for mode, title, d in data:
+        Hs = heads_of(d)
+        groups = ood_sets(d) + ['AVG']
+        lines += [f'## {title} (heads γ = {base_label(title)} × {range_txt(title)})', '']
+        for m in [m for m in methods if any(stat(d, m, h)[2] for h in Hs)]:
+            lines += [f'### {title} · {STYLE.get(m, (m,))[0]}', '',
+                      '| H | ' + ' | '.join('Places365' if g == 'places365' else g for g in groups) + ' |',
+                      '| --- |' + ' --- |' * len(groups)]
+            for lab, meth, h in [('Baseline', 'single_head', 1)] + [(str(h), m, h) for h in Hs]:
+                cells = []
+                for g in groups:
+                    f, fs, n = stat(d, meth, h, g)
+                    a = stat(d, meth, h, g, 1)[0]
+                    cells.append(f'{f:.2f} ± {fs:.2f} / {a:.2f}' if n else '-')
+                lines.append(f'| {lab} | ' + ' | '.join(cells) + ' |')
+            lines.append('')
+    path = os.path.join(out, 'per_dataset.md')
+    open(path, 'w').write('\n'.join(lines))
+    print('saved', path)
+
+
 def summary_md(data, out, H):
     lines = ['# Results summary (mean ± std over seeds; FPR95 ↓ / AUROC ↑, %)', '']
     for mode, title, d in data:
@@ -263,6 +382,10 @@ def main():
     ap.add_argument('--ce', default=None, help='run folder for CE (default: newest logs/*-ce-*)')
     ap.add_argument('--supcon', default=None, help='run folder for SupCon (default: newest logs/*-supcon-*)')
     ap.add_argument('--h', type=int, default=2, help='H used for the per-OOD bar chart')
+    ap.add_argument('--ref-ce', default=None, help='reference run for CE in fig5 (its H = 1 single head), e.g. the tuned-gamma run')
+    ap.add_argument('--ref-supcon', default=None, help='reference run for SupCon in fig5')
+    ap.add_argument('--compare', default='MHKSA,CoRP_Ens_percentile,CoRP_Ens_zscore', help='methods in fig5')
+    ap.add_argument('--per-ood', default='MHKSA,best_head_loo,CoRP_Ens_zscore', help='methods in fig6 / per_dataset.md')
     ap.add_argument('--out', default='figures')
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
@@ -272,8 +395,7 @@ def main():
         run = getattr(a, mode) or find_run(a.logs, mode)
         if run and glob.glob(os.path.join(run, 'results*.csv')):
             print(f'[{mode}] {run}')
-            gb = os.path.basename(os.path.normpath(run)).split('-gb')
-            BASE_GAMMA[title] = f"γ={gb[1].split('-')[0].split('_')[0]}" if len(gb) > 1 else 'median γ'
+            run_info(run, title)
             data.append((mode, title, load(run)))
     if not data:
         raise SystemExit(f'no results_*.csv found under {a.logs}/')
@@ -283,7 +405,17 @@ def main():
         fig_vs_heads(data, a.out, ('MHKSA', 'Comb_MHKSA_norm', 'CoRP_Ens_zscore', 'Comb_Ens_max'), 'fig4_combine.png')
     fig_mhksa_parts(data, a.out)
     fig_per_ood(data, a.out, a.h)
+    refs = {}
+    for mode, title in MODES:
+        r = getattr(a, f'ref_{mode}')
+        if r:
+            g = os.path.basename(os.path.normpath(r)).split('-gb')
+            lab = f"γ={g[1].split('-')[0].split('_')[0]}" if len(g) > 1 else 'median γ'
+            refs[mode] = (load(r), f'Tuned KPCA ({lab})' if len(g) > 1 else f'KPCA ({lab})')
+    fig_vs_ref(data, refs, a.out, a.compare.split(','))
+    fig_per_ood_lines(data, a.out, a.per_ood.split(','))
     summary_md(data, a.out, a.h)
+    per_dataset_md(data, a.out, a.per_ood.split(','))
 
 
 if __name__ == '__main__':
