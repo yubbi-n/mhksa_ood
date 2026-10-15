@@ -3,7 +3,7 @@
     python scripts/plot_results.py --ce logs/<run> --supcon logs/<run>
     python scripts/plot_results.py --ce logs/<run> --supcon logs/<run> --ref-ce logs/<tuned run> --ref-supcon logs/<tuned run> --figs vs_ref
 --figs picks what to write (comma separated): vs_heads, mhksa_parts, per_ood, combine, summary (the default set),
-vs_ref, vs_ref_pair, ensemble, per_ood_lines, per_dataset (only when asked for), or all.
+vs_ref, vs_ref_pair, ensemble, merged, per_ood_lines, per_dataset (only when asked for), or all.
     python scripts/plot_results.py --ce logs/<median run> --supcon logs/<median run> --ref-ce logs/<tuned run> --ref-supcon logs/<tuned run> --figs ensemble
     python scripts/plot_results.py --h 3 --compare MHKSA,CoRP_Ens_zscore --per-ood MHKSA,CoRP_Ens_zscore
 (without --ce / --supcon the newest logs/*-ce-* and logs/*-supcon-* are used)
@@ -18,6 +18,8 @@ a tag that names the runs (e.g. _median_m0.3-10, _gb2-gb1_m0.3-3; set it with --
        <out>/fig5_{mode}_vs_ref.png     one figure per backbone: --compare methods vs a reference line
                                         (H = 1 single head of --ref-{mode}, e.g. the tuned-gamma run; else this run's own)
        <out>/fig5_pair.png              CE | SupCon side by side: --compare methods vs H, each against its own H = 1 head
+       <out>/fig8_{mode}_merged.png     one axis per backbone: --{mode} run solid, --extra-{mode} run dash-dot,
+                                        grey dashed = median KPCA and tuned KPCA (--ref-{mode})
        <out>/fig7_{mode}_ensemble.png   one figure per backbone: MHKSA vs ensemble (percentile, z-score) vs H,
                                         left = heads around median γ (--{mode}), right = around tuned γ (--ref-{mode})
        <out>/fig6_{mode}_{method}_per_ood.png   FPR95 / AUROC vs H, one line per OOD set (--per-ood methods)
@@ -337,6 +339,60 @@ def fig_vs_ref_pair(data, out, methods):
     save(fig, out, 'fig5_pair.png')
 
 
+def fig_merged(data, extras, refs, out, methods=('MHKSA', 'CoRP_Ens_percentile', 'CoRP_Ens_zscore')):
+    """one axis per backbone: two head ranges of the same base gamma in one plot.
+    --{mode} run = solid lines, --extra-{mode} run = dash-dot lines (same colour per method);
+    grey dashed lines = median KPCA (H = 1 of the --{mode} run) and tuned KPCA (H = 1 of --ref-{mode})."""
+    DASHDOT = (0, (7, 2.5, 1.5, 2.5))
+    for mode, title, d in data:
+        if mode not in extras:
+            print(f'[{mode}] fig8 skipped: needs --extra-{mode} (the second range run)')
+            continue
+        ed, erange = extras[mode]
+        lo, hi = MULT_RANGE.get(title, ('0.3', '3'))
+        rng_main, rng_extra = f'[{float(lo):g}, {float(hi):g}]', f'[{float(erange[0]):g}, {float(erange[1]):g}]'
+        fig, ax = plt.subplots(figsize=(9.6, 5.4))
+        ends = []
+        bases = [(d, 'Median KPCA')] + ([(refs[mode][0], f'Tuned KPCA ({refs[mode][2]})')] if mode in refs else [])
+        for bd, blab in bases:
+            mu, sd, n = stat(bd, 'single_head', 1)
+            if n:
+                ax.axhspan(mu - sd, mu + sd, color=BASE, alpha=0.08, lw=0, zorder=1)
+                ax.axhline(mu, color=BASE, ls=(0, (5, 3)), lw=1.6, zorder=2)
+                ends.append((f'{blab} {mu:.2f}', mu, BASE))
+        Hs_all = set()
+        for rd, ls in ((ed, DASHDOT), (d, '-')):
+            Hs = [h for h in heads_of(rd) if h >= 2]
+            Hs_all |= set(Hs)
+            for k, m in enumerate(methods):
+                if not any(stat(rd, m, h)[2] for h in Hs):
+                    continue
+                v = np.array([stat(rd, m, h)[:2] for h in Hs])
+                c = SLOTS[k % len(SLOTS)]
+                ax.errorbar(Hs, v[:, 0], yerr=v[:, 1], color=c, ls=ls, marker='os^Dv'[k % 5], lw=2, ms=6,
+                            capsize=2.5, elinewidth=1, mec=SURFACE, mew=1.2, zorder=3)
+                ends.append((f'{v[-1, 0]:.2f}', v[-1, 0], c))
+        Hs = sorted(Hs_all)
+        ax.set_xticks(Hs)
+        ax.set_xlim(Hs[0] - 0.4, Hs[-1] + 0.4)
+        ax.set_xlabel('Number of heads H')
+        ax.set_ylabel('FPR95 (%) ↓')
+        ax.set_title(f'{title} · heads γ = median γ × {rng_extra} and × {rng_main}', loc='left', fontweight='bold')
+        label_ends(ax, Hs, ends)
+        from matplotlib.lines import Line2D
+        handles = [Line2D([], [], color=SLOTS[k % len(SLOTS)], marker='os^Dv'[k % 5], lw=2, mec=SURFACE,
+                          label=STYLE.get(m, (m,))[0]) for k, m in enumerate(methods)]
+        handles += [Line2D([], [], color=INK2, ls=DASHDOT, lw=2, label=f'heads × {rng_extra}'),
+                    Line2D([], [], color=INK2, ls='-', lw=2, label=f'heads × {rng_main}'),
+                    Line2D([], [], color=BASE, ls=(0, (5, 3)), lw=1.6, label='KPCA (H = 1) ± std')]
+        ax.legend(handles=handles, loc='upper center', bbox_to_anchor=(0.5, -0.14), ncol=3, fontsize=9, handlelength=4)
+        fig.text(0.01, -0.06, 'CIFAR10 · ResNet18. Mean ± std over seeds, averaged over 5 OOD sets. '
+                 'Colour = method, line style = head range; grey dashed = single-head KPCA baselines.',
+                 fontsize=8.5, color=INK2, va='top')
+        fig.tight_layout()
+        save(fig, out, f'fig8_{mode}_merged.png')
+
+
 def fig_ensemble(data, refs, out, methods=('MHKSA', 'CoRP_Ens_percentile', 'CoRP_Ens_zscore')):
     """one figure per backbone, two panels: heads around the median gamma (--ce / --supcon run) and around the
     tuned gamma (--ref-ce / --ref-supcon run); each against its own H = 1 single head."""
@@ -469,10 +525,12 @@ def main():
     ap.add_argument('--h', type=int, default=2, help='H used for the per-OOD bar chart')
     ap.add_argument('--ref-ce', default=None, help='reference run for CE in fig5 (its H = 1 single head), e.g. the tuned-gamma run')
     ap.add_argument('--ref-supcon', default=None, help='reference run for SupCon in fig5')
+    ap.add_argument('--extra-ce', default=None, help='second run for CE in fig8 (other head range, drawn dash-dot)')
+    ap.add_argument('--extra-supcon', default=None, help='second run for SupCon in fig8')
     ap.add_argument('--compare', default='MHKSA,CoRP_Ens_percentile,CoRP_Ens_zscore', help='methods in fig5')
     ap.add_argument('--per-ood', default='MHKSA,best_head_loo,CoRP_Ens_zscore', help='methods in fig6 / per_dataset.md')
     ap.add_argument('--figs', default='vs_heads,mhksa_parts,per_ood,combine,summary',
-                    help='what to write: vs_heads, mhksa_parts, per_ood, combine, summary, vs_ref, vs_ref_pair, ensemble, per_ood_lines, per_dataset, all')
+                    help='what to write: vs_heads, mhksa_parts, per_ood, combine, summary, vs_ref, vs_ref_pair, ensemble, merged, per_ood_lines, per_dataset, all')
     ap.add_argument('--out', default='results', help='figures go to <out>/graph, tables to <out>/markdown')
     ap.add_argument('--tag', default=None, help='file-name suffix (default: from the run names, e.g. median_m0.3-10)')
     a = ap.parse_args()
@@ -492,7 +550,7 @@ def main():
         a.tag = f'{bases}_{ranges}'
     TAG[0] = f'_{a.tag}' if a.tag else ''
 
-    ALL = ['vs_heads', 'mhksa_parts', 'per_ood', 'combine', 'summary', 'vs_ref', 'vs_ref_pair', 'ensemble', 'per_ood_lines', 'per_dataset']
+    ALL = ['vs_heads', 'mhksa_parts', 'per_ood', 'combine', 'summary', 'vs_ref', 'vs_ref_pair', 'ensemble', 'merged', 'per_ood_lines', 'per_dataset']
     want = ALL if a.figs == 'all' else a.figs.split(',')
     bad = set(want) - set(ALL)
     if bad:
@@ -520,6 +578,14 @@ def main():
         fig_vs_ref_pair(data, a.out, a.compare.split(','))
     if 'ensemble' in want:
         fig_ensemble(data, refs, a.out)
+    if 'merged' in want:
+        extras = {}
+        for mode, _ in MODES:
+            r = getattr(a, f'extra_{mode}')
+            if r:
+                m = re.search(r'-m([\d.]+)_([\d.]+)(log|lin)', os.path.basename(os.path.normpath(r)))
+                extras[mode] = (load(r), (m.group(1), m.group(2)) if m else ('0.3', '3'))
+        fig_merged(data, extras, refs, a.out)
     if 'per_ood_lines' in want:
         fig_per_ood_lines(data, a.out, a.per_ood.split(','))
     if 'summary' in want:
