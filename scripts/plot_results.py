@@ -3,7 +3,7 @@
     python scripts/plot_results.py --ce logs/<run> --supcon logs/<run>
     python scripts/plot_results.py --ce logs/<run> --supcon logs/<run> --ref-ce logs/<tuned run> --ref-supcon logs/<tuned run> --figs vs_ref
 --figs picks what to write (comma separated): vs_heads, mhksa_parts, per_ood, combine, summary (the default set),
-vs_ref, ensemble, per_ood_lines, per_dataset (only when asked for), or all.
+vs_ref, vs_ref_pair, ensemble, per_ood_lines, per_dataset (only when asked for), or all.
     python scripts/plot_results.py --ce logs/<median run> --supcon logs/<median run> --ref-ce logs/<tuned run> --ref-supcon logs/<tuned run> --figs ensemble
     python scripts/plot_results.py --h 3 --compare MHKSA,CoRP_Ens_zscore --per-ood MHKSA,CoRP_Ens_zscore
 (without --ce / --supcon the newest logs/*-ce-* and logs/*-supcon-* are used)
@@ -17,6 +17,7 @@ a tag that names the runs (e.g. _median_m0.3-10, _gb2-gb1_m0.3-3; set it with --
        <out>/fig4_combine.png           head-combination variants (run.methods=[combine]) vs MHKSA / ensemble
        <out>/fig5_{mode}_vs_ref.png     one figure per backbone: --compare methods vs a reference line
                                         (H = 1 single head of --ref-{mode}, e.g. the tuned-gamma run; else this run's own)
+       <out>/fig5_pair.png              CE | SupCon side by side: --compare methods vs H, each against its own H = 1 head
        <out>/fig7_{mode}_ensemble.png   one figure per backbone: MHKSA vs ensemble (percentile, z-score) vs H,
                                         left = heads around median γ (--{mode}), right = around tuned γ (--ref-{mode})
        <out>/fig6_{mode}_{method}_per_ood.png   FPR95 / AUROC vs H, one line per OOD set (--per-ood methods)
@@ -312,6 +313,30 @@ def fig_vs_ref(data, refs, out, methods):
         save(fig, out, f'fig5_{mode}_vs_ref.png')
 
 
+def fig_vs_ref_pair(data, out, methods):
+    """both backbones side by side (CE | SupCon): FPR95 vs H (H >= 2) for `methods` (default --compare, no LOO),
+    each against its own run's H = 1 single head (the tuned KPCA when the runs are the tuned-gamma runs)."""
+    fig, axes = plt.subplots(1, len(data), figsize=(6.6 * len(data), 4.8), squeeze=False)
+    h1 = []
+    for ax, (mode, title, d) in zip(axes[0], data):
+        Hs = [h for h in heads_of(d) if h >= 2]
+        meths = [m for m in methods if any(stat(d, m, h)[2] for h in Hs)]
+        base = base_label(title)
+        klab = 'Median KPCA' if base == 'median γ' else f'Tuned KPCA ({base})'
+        ends = _vs_ref_panel(ax, d, d, klab, meths, Hs)
+        lo, hi = MULT_RANGE.get(title, ('0.3', '3'))
+        ax.set_title(f'{title} · heads γ = {base.split("=")[-1].strip()} × [{float(lo):g}, {float(hi):g}]',
+                     loc='left', fontweight='bold')
+        label_ends(ax, Hs, ends)
+        ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.14), ncol=2, fontsize=9)
+        h1.append(f'{title} {stat(d, "single_head", 1)[0]:.2f}')
+    axes[0, 0].set_ylabel('FPR95 (%) ↓')
+    fig.text(0.01, -0.04, 'CIFAR10 · ResNet18. Mean ± std over seeds, averaged over 5 OOD sets. Dashed line: '
+             f'each run\'s single head (H = 1): {", ".join(h1)}.', fontsize=8.5, color=INK2, va='top')
+    fig.tight_layout(w_pad=3)
+    save(fig, out, 'fig5_pair.png')
+
+
 def fig_ensemble(data, refs, out, methods=('MHKSA', 'CoRP_Ens_percentile', 'CoRP_Ens_zscore')):
     """one figure per backbone, two panels: heads around the median gamma (--ce / --supcon run) and around the
     tuned gamma (--ref-ce / --ref-supcon run); each against its own H = 1 single head."""
@@ -447,7 +472,7 @@ def main():
     ap.add_argument('--compare', default='MHKSA,CoRP_Ens_percentile,CoRP_Ens_zscore', help='methods in fig5')
     ap.add_argument('--per-ood', default='MHKSA,best_head_loo,CoRP_Ens_zscore', help='methods in fig6 / per_dataset.md')
     ap.add_argument('--figs', default='vs_heads,mhksa_parts,per_ood,combine,summary',
-                    help='what to write: vs_heads, mhksa_parts, per_ood, combine, summary, vs_ref, ensemble, per_ood_lines, per_dataset, all')
+                    help='what to write: vs_heads, mhksa_parts, per_ood, combine, summary, vs_ref, vs_ref_pair, ensemble, per_ood_lines, per_dataset, all')
     ap.add_argument('--out', default='results', help='figures go to <out>/graph, tables to <out>/markdown')
     ap.add_argument('--tag', default=None, help='file-name suffix (default: from the run names, e.g. median_m0.3-10)')
     a = ap.parse_args()
@@ -467,7 +492,7 @@ def main():
         a.tag = f'{bases}_{ranges}'
     TAG[0] = f'_{a.tag}' if a.tag else ''
 
-    ALL = ['vs_heads', 'mhksa_parts', 'per_ood', 'combine', 'summary', 'vs_ref', 'ensemble', 'per_ood_lines', 'per_dataset']
+    ALL = ['vs_heads', 'mhksa_parts', 'per_ood', 'combine', 'summary', 'vs_ref', 'vs_ref_pair', 'ensemble', 'per_ood_lines', 'per_dataset']
     want = ALL if a.figs == 'all' else a.figs.split(',')
     bad = set(want) - set(ALL)
     if bad:
@@ -491,6 +516,8 @@ def main():
                           (m.group(1), f'{float(m.group(2)):g}') if m else ('0.3', '3'))
     if 'vs_ref' in want:
         fig_vs_ref(data, refs, a.out, a.compare.split(','))
+    if 'vs_ref_pair' in want:
+        fig_vs_ref_pair(data, a.out, a.compare.split(','))
     if 'ensemble' in want:
         fig_ensemble(data, refs, a.out)
     if 'per_ood_lines' in want:
