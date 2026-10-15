@@ -2,7 +2,7 @@
 
     python scripts/plot_influence.py results/markdown/influence_ce_median_m0.3-3.0.md results/markdown/influence_ce_median_m0.3-10.md \
         results/markdown/influence_supcon_median_m0.3-3.0.md results/markdown/influence_supcon_median_m0.3-10.md
-    python scripts/plot_influence.py ... --rule raw          # MHKSA stage-1 rule instead of the ensemble z-score mean
+    python scripts/plot_influence.py ... --rule mhksa        # MHKSA (stage 2 refitted per subset) instead of the ensemble
 
 Bar = FPR95 change when that head is left out (negative = removing it helps = harmful head).
 x = head gamma as a multiple of the median gamma (head 0 is 0.3x).  -> results/graph/influence_loo_<rule>.png
@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 
 SURFACE, INK, INK2, GRID = '#fcfcfb', '#0b0b0b', '#52514e', '#e4e3df'
 HARM, HELP = '#e34948', '#2a78d6'
-RULES = {'zmean': 'z-score mean (ensemble)', 'raw': 'raw residual sum (MHKSA stage 1)'}
+RULES = {'zmean': 'z-score mean (ensemble)', 'mhksa': 'MHKSA (stage 2 refitted per head subset)'}
 
 
 def parse(path, rule):

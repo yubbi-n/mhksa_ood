@@ -14,7 +14,8 @@ influence  how much the bad heads weigh in the combined score
              ① per head: share of the score on ID (weight), of the OOD-ID gap (signal), of the ID variance (noise)
              ② FPR95 change when one head is left out (negative = removing it helps = harmful head)
              ③ all heads vs the better / worse half by single-head FPR
-           rules: "raw" = MHKSA stage-1 residuals squared and summed (stage 2 would need refitting), "zmean" = ensemble [3]
+           rules: "mhksa" = MHKSA [2] on the chosen heads: stage-1 residuals plus a stage 2 refitted on those heads'
+                  concatenated ID-train coords (all heads = the checkpoint's MHKSA, checked), "zmean" = ensemble [3]
 Both are analyses: the oracle / halves are picked with the test OOD sets and are not methods.
 """
 import os
@@ -24,8 +25,8 @@ import itertools
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # repo root, for src/
 import numpy as np
 from src.config import load_config, run_name
-from src.data import load_eval
-from src.utils import ckpt_path, load_pickle
+from src.data import load_eval, load_id_train, split_calib
+from src.utils import ckpt_path, load_pickle, set_seed
 from src.metrics import evaluate_all
 
 def heads(cfg, name, H, f_in, f_out, oods, SEEDS):
@@ -109,25 +110,66 @@ def heads(cfg, name, H, f_in, f_out, oods, SEEDS):
     print('per head: ' + '  '.join(f'{x * 100:.1f}%' for x in one) + f'   |   max over heads: {mx * 100:.1f}%')
 
 
+class Stage2Refit:
+    """MHKSA stage 2 refitted on a subset of heads, exactly as MHKSA.fit would do on those heads alone:
+    PCA (ratio mhksa_evr2) of the concatenated stage-1 coords of the ID training set.
+    The covariance of the full concatenation is computed once; a subset's covariance is its sub-block."""
+
+    def __init__(self, train_coords, ratio):
+        self.ratio = ratio
+        ends = np.cumsum([c.shape[1] for c in train_coords])
+        self.cols = [np.arange(e - c.shape[1], e) for e, c in zip(ends, train_coords)]
+        Z = np.concatenate(train_coords, 1)
+        self.mu = Z.mean(0)
+        Zc = (Z - self.mu).astype(np.float64)
+        self.G = Zc.T @ Zc
+
+    def fit(self, idx):
+        from src.model import PCA
+        c = np.concatenate([self.cols[h] for h in idx])
+        p = PCA(self.ratio)
+        p.mu = self.mu[c]
+        s, U = np.linalg.eigh(self.G[np.ix_(c, c)])
+        p._s, p._U = s[::-1], U[:, ::-1]
+        return p._truncate(), c
+
+
 def influence(cfg, name, H, f_in, f_out, oods, SEEDS):
     def fpr(s_in, s_out):
         return evaluate_all(s_in, s_out)[1]['FPR']
 
-
-    RULES = ('raw', 'zmean')
-    acc = {k: [] for k in ['single', 'share', 'loo', 'group', 'all', 'gammas']}
+    RULES = ('mhksa', 'zmean')
+    x_all = load_id_train(cfg)
+    acc = {k: [] for k in ['single', 'share', 'loo', 'group', 'all', 'gammas', 'check']}
     for seed in SEEDS:
         m = load_pickle(ckpt_path(cfg, name, seed, H))['model']
         out_in = m.stage1.transform(f_in)
         out_o = {n: m.stage1.transform(x) for n, x in f_out.items()}
         mu, sd = m.ens.ref_mu[:, None], m.ens.ref_sd[:, None]
-        # per-head terms of each rule (higher = more OOD); the score is -(sum or mean of terms)
-        T = {'raw': (out_in['mhksa'][1] ** 2, {n: o['mhksa'][1] ** 2 for n, o in out_o.items()}),
+        # per-head terms (higher = more OOD). zmean: score = -sum of terms. mhksa: the terms are the stage-1 part
+        # e_h^2 only (used for the share table); its score adds the stage-2 residual of the refitted stage 2.
+        T = {'mhksa': (out_in['mhksa'][1] ** 2, {n: o['mhksa'][1] ** 2 for n, o in out_o.items()}),
              'zmean': ((out_in['corp'][1] - mu) / sd, {n: (o['corp'][1] - mu) / sd for n, o in out_o.items()})}
+        x_fit, _ = split_calib(x_all, cfg.data.calib_holdout, set_seed(seed))     # same ID data as train.py
+        st2 = Stage2Refit(m.stage1.transform(x_fit)['mhksa'][0], cfg.model.mhksa_evr2)
+        cat_in = np.concatenate(out_in['mhksa'][0], 1)
+        cat_o = {n: np.concatenate(o['mhksa'][0], 1) for n, o in out_o.items()}
+
+        def mhksa_scores(idx):
+            p, c = st2.fit(idx)
+            ti, to = T['mhksa']
+            return (-np.sqrt(ti[idx].sum(0) + p.transform(cat_in[:, c])[1] ** 2),
+                    {n: -np.sqrt(t[idx].sum(0) + p.transform(cat_o[n][:, c])[1] ** 2) for n, t in to.items()})
 
         def score(rule, idx):
+            if rule == 'mhksa':
+                return fpr(*mhksa_scores(idx))
             ti, to = T[rule]
             return fpr(-ti[idx].sum(0), {n: -t[idx].sum(0) for n, t in to.items()})
+
+        # sanity: all heads with the refitted stage 2 must reproduce the checkpoint's own MHKSA score
+        s_ck = m.mhksa.scores(f_in, out_in)['MHKSA']
+        acc['check'].append(np.abs(mhksa_scores(list(range(H)))[0] - s_ck).max())
 
         allh = list(range(H))
         single = np.array([fpr(-out_in['corp'][1][h], {n: -o['corp'][1][h] for n, o in out_o.items()}) for h in allh])
@@ -137,7 +179,7 @@ def influence(cfg, name, H, f_in, f_out, oods, SEEDS):
         for r in RULES:
             ti, to = T[r]
             to_all = np.concatenate(list(to.values()), 1)
-            w = ti.mean(1) if r == 'raw' else np.full(H, 1.0)              # weight on ID (z terms all centred at 0)
+            w = ti.mean(1) if r == 'mhksa' else np.full(H, 1.0)              # weight on ID (z terms all centred at 0)
             gap = to_all.mean(1) - ti.mean(1)                                # OOD - ID: separation signal
             noise = ti.var(1)                                                # spread of the term on ID
             share[r] = np.stack([w / w.sum(), gap / gap.sum(), noise / noise.sum()])   # (3, H)
@@ -155,11 +197,14 @@ def influence(cfg, name, H, f_in, f_out, oods, SEEDS):
     for h in range(H):
         print(f'| {h} | {g[h]:.3f} | {S[h]:.2f} | {rank[h]} |')
 
-    for r, lab in [('raw', 'raw residual sum (MHKSA stage 1)'), ('zmean', 'z-score mean (ensemble)')]:
+    print(f'\nsanity: refitted stage 2 on all heads vs checkpoint MHKSA, max |score diff| = {max(acc["check"]):.2e}')
+    for r, lab in [('mhksa', 'MHKSA (stage 2 refitted per head subset)'), ('zmean', 'z-score mean (ensemble)')]:
         sh = np.mean([a[r] for a in acc['share']], 0)
         lo = np.mean([a[r] for a in acc['loo']], 0)
         print(f'\n## rule: {lab}   (all {H} heads: FPR95 {np.mean([a[r] for a in acc["all"]]):.2f})\n')
         print('### ① influence vs contribution, and ② leave-one-head-out\n')
+        if r == 'mhksa':
+            print('(shares: stage-1 terms e_h^2 only; FPR columns: full MHKSA with the refitted stage 2)\n')
         print('| head | gamma | single FPR | weight on ID | share of OOD-ID gap (signal) | share of ID variance (noise) | FPR change if removed (- = harmful head) |')
         print('| --- | --- | --- | --- | --- | --- | --- |')
         for h in range(H):
