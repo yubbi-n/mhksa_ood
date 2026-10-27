@@ -1,0 +1,15 @@
+# ImageNet-1K / ResNet50 (torchvision IMAGENET1K_V1) / standard (CE) training
+# features: scripts/extract_imagenet.py (train = 200 images per class unless re-extracted with --per-class)
+# CoRP setting of the paper for this benchmark: evr 0.5, M 4096 (its tuned gamma = 3 is not used: heads = median x range)
+_base_: base.yaml
+data:
+  in_data: ImageNet
+  arch: R50
+  train_mode: ce
+  out_datasets: [iNaturalist, SUN, Places, Textures]
+kernel:
+  M: 4096
+  heads: [1, 10]                # checkpoints are large with M = 4096; add H values only if needed
+model:
+  exp_var_ratio: 0.5
+  mhksa_evr1: 0.71              # 0.71 x 0.71 = 0.50

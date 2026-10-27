@@ -110,3 +110,13 @@ H = 1 → m = 1 (pure median heuristic); H ≥ 2 → m_h over [mult_min, mult_ma
 
 PCA ratios: `exp_var_ratio` (0.8 CE / 0.7 SupCon) for single head / best head / ensemble (= CoRP).
 MHKSA uses `mhksa_evr1`, `mhksa_evr2` (0.9 / 0.9 CE, 0.84 / 0.84 SupCon) so that stage1 × stage2 ≈ exp_var_ratio.
+
+## ImageNet-1K (ResNet50, CE)
+Features are extracted on the server GPU, streaming ImageNet from the Hugging Face hub one shard at a time
+(needs ~1 GB free while running; accept the dataset terms and `huggingface-cli login` first):
+```bash
+python scripts/extract_imagenet.py train --cache ./cache --per-class 200 --gpu 0   # 200k train images
+python scripts/extract_imagenet.py val   --cache ./cache --gpu 0
+python scripts/extract_imagenet.py ood   --cache ./cache --gpu 0 --ood iNaturalist=<dir> SUN=<dir> Places=<dir> Textures=<dir>
+python train.py --config configs/in1k_r50_ce.yaml --set data.cache_dir=./cache kernel.mult_max=10
+```
