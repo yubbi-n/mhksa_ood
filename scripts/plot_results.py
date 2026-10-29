@@ -3,7 +3,7 @@
     python scripts/plot_results.py --ce logs/<run> --supcon logs/<run>
     python scripts/plot_results.py --ce logs/<run> --supcon logs/<run> --ref-ce logs/<tuned run> --ref-supcon logs/<tuned run> --figs vs_ref
 --figs picks what to write (comma separated): vs_heads, mhksa_parts, per_ood, combine, summary (the default set),
-vs_ref, vs_ref_pair, ensemble, merged, per_ood_lines, per_dataset (only when asked for), or all.
+vs_ref, vs_ref_pair, ensemble, merged, main, per_ood_lines, per_dataset (only when asked for), or all.
     python scripts/plot_results.py --ce logs/<median run> --supcon logs/<median run> --ref-ce logs/<tuned run> --ref-supcon logs/<tuned run> --figs ensemble
     python scripts/plot_results.py --h 3 --compare MHKSA,CoRP_Ens_zscore --per-ood MHKSA,CoRP_Ens_zscore
 (without --ce / --supcon the newest logs/*-ce-* and logs/*-supcon-* are used)
@@ -20,6 +20,8 @@ a tag that names the runs (e.g. _median_m0.3-10, _gb2-gb1_m0.3-3; set it with --
        <out>/fig5_pair.png              CE | SupCon side by side: --compare methods vs H, each against its own H = 1 head
        <out>/fig8_{mode}_merged.png     one axis per backbone: --{mode} run solid, --extra-{mode} run dash-dot,
                                         grey dashed = median KPCA and tuned KPCA (--ref-{mode})
+       <out>/main_bars.png, main_table.md   KPCA (median / tuned, H = 1) vs Ours (MHKSA, ensemble z-score at --main-h):
+                                        bar chart per backbone + table per OOD set (--figs main)
        <out>/fig7_{mode}_ensemble.png   one figure per backbone: MHKSA vs ensemble (percentile, z-score) vs H,
                                         left = heads around median γ (--{mode}), right = around tuned γ (--ref-{mode})
        <out>/fig6_{mode}_{method}_per_ood.png   FPR95 / AUROC vs H, one line per OOD set (--per-ood methods)
@@ -427,6 +429,68 @@ def ood_sets(d):
     return [o for o in OOD_ORDER if any(k[2] == o for k in d)] or sorted({k[2] for k in d} - {'AVG'})
 
 
+def main_compare(data, refs, out, H):
+    """KPCA vs Ours at one H: a Markdown table (per OOD set + average) and one bar chart.
+    KPCA rows: single head (H = 1) of the --{mode} run (its base gamma, e.g. median) and of --ref-{mode} (tuned gamma).
+    Ours rows: MHKSA and ensemble z-score of the --{mode} run at H."""
+    OURS = [('MHKSA', 'MHKSA'), ('CoRP_Ens_zscore', 'Ensemble (z-score)')]
+    GREYS, OURC = ['#c9c8c4', '#8a8984'], ['#2a78d6', '#1baf7a']
+    nice = lambda o: {'places365': 'Places365'}.get(o, o)
+    lines = [f'# KPCA vs Ours (H = {H} for Ours)', '',
+             'FPR95 (%) per OOD set, lower is better; Avg = mean over OOD sets (± std over seeds); AUROC (%) higher is better.', '']
+    panels = []
+    for mode, title, d in data:
+        oods = ood_sets(d)
+        rng = f'median γ × [{float(MULT_RANGE.get(title, ("0.3", "3"))[0]):g}, {float(MULT_RANGE.get(title, ("0.3", "3"))[1]):g}]'
+        rows = [('KPCA', f'{base_label(title)} (H = 1)', d, 'single_head', 1)]
+        if mode in refs:
+            rows.append(('KPCA', f'tuned {refs[mode][2]} (H = 1)', refs[mode][0], 'single_head', 1))
+        rows += [('Ours', f'{lab} (H = {H})', d, m, H) for m, lab in OURS]
+        vals = [(g, lab, [stat(rd, m, h, o)[0] for o in oods], stat(rd, m, h), stat(rd, m, h, col=1)) for g, lab, rd, m, h in rows]
+        best = min(v[3][0] for v in vals)
+        lines += [f'## {title} · heads γ = {rng}', '',
+                  '| | method | ' + ' | '.join(nice(o) for o in oods) + ' | Avg FPR95 ↓ | Avg AUROC ↑ |',
+                  '| --- | --- |' + ' --- |' * (len(oods) + 2)]
+        prev = None
+        for g, lab, per, (mu, sd, _), (au, _, _) in vals:
+            avg = f'{mu:.2f} ± {sd:.2f}'
+            avg = f'**{avg}**' if mu == best else avg
+            lines.append(f'| {g if g != prev else ""} | {lab} | ' + ' | '.join(f'{v:.2f}' for v in per) + f' | {avg} | {au:.2f} |')
+            prev = g
+        lines.append('')
+        panels.append((title, rng, vals))
+    md = out_path(out, 'markdown', 'main_table.md')
+    open(md, 'w').write('\n'.join(lines) + '\n')
+    print('saved', md)
+
+    fig, axes = plt.subplots(1, len(panels), figsize=(5.8 * len(panels), 4.6), squeeze=False)
+    for ax, (title, rng, vals) in zip(axes[0], panels):
+        nk = sum(v[0] == 'KPCA' for v in vals)
+        xs = list(range(nk)) + [nk + 0.6 + i for i in range(len(vals) - nk)]
+        cols = GREYS[:nk] + OURC[:len(vals) - nk]
+        mus = [v[3][0] for v in vals]
+        sds = [v[3][1] for v in vals]
+        ax.bar(xs, mus, 0.72, yerr=sds, color=cols, capsize=3, error_kw={'elinewidth': 1, 'ecolor': INK2}, zorder=3)
+        for x, m, sd in zip(xs, mus, sds):
+            ax.annotate(f'{m:.2f}', (x, m + sd), xytext=(0, 5), textcoords='offset points', ha='center',
+                        fontsize=10, fontweight='bold', color=INK)
+        ax.set_xticks(xs)
+        ax.set_xticklabels([v[1].replace(' (H', '\n(H') for v in vals], fontsize=9)
+        ax.axvline((xs[nk - 1] + xs[nk]) / 2, color=GRID, lw=1.2, zorder=1)
+        top = max(m + s for m, s in zip(mus, sds))
+        ax.set_ylim(0, top * 1.18)
+        for lab, xa, xb in (('KPCA', xs[0], xs[nk - 1]), ('Ours', xs[nk], xs[-1])):
+            ax.text((xa + xb) / 2, top * 1.12, lab, ha='center', fontsize=11, fontweight='bold',
+                    color=INK2 if lab == 'KPCA' else '#2a78d6')
+        ax.set_ylabel('Avg FPR95 (%) ↓')
+        ax.set_title(f'{title} · heads γ = {rng}', loc='left', fontweight='bold')
+        ax.grid(axis='x', visible=False)
+    fig.text(0.01, -0.03, f'CIFAR10 · ResNet18. FPR95 averaged over OOD sets, mean ± std over seeds. Ours at H = {H}.',
+             fontsize=8.5, color=INK2, va='top')
+    fig.tight_layout(w_pad=3)
+    save(fig, out, 'main_bars.png')
+
+
 def fig_per_ood_lines(data, out, methods):
     """per backbone and method: FPR95 / AUROC vs H, one line per OOD set (+ AVG), baseline at x = 0."""
     for mode, title, d in data:
@@ -530,7 +594,8 @@ def main():
     ap.add_argument('--compare', default='MHKSA,CoRP_Ens_percentile,CoRP_Ens_zscore', help='methods in fig5')
     ap.add_argument('--per-ood', default='MHKSA,best_head_loo,CoRP_Ens_zscore', help='methods in fig6 / per_dataset.md')
     ap.add_argument('--figs', default='vs_heads,mhksa_parts,per_ood,combine,summary',
-                    help='what to write: vs_heads, mhksa_parts, per_ood, combine, summary, vs_ref, vs_ref_pair, ensemble, merged, per_ood_lines, per_dataset, all')
+                    help='what to write: vs_heads, mhksa_parts, per_ood, combine, summary, vs_ref, vs_ref_pair, ensemble, merged, main, per_ood_lines, per_dataset, all')
+    ap.add_argument('--main-h', type=int, default=10, help='H of Ours in the main table / bars')
     ap.add_argument('--out', default='results', help='figures go to <out>/graph, tables to <out>/markdown')
     ap.add_argument('--tag', default=None, help='file-name suffix (default: from the run names, e.g. median_m0.3-10)')
     a = ap.parse_args()
@@ -550,7 +615,7 @@ def main():
         a.tag = f'{bases}_{ranges}'
     TAG[0] = f'_{a.tag}' if a.tag else ''
 
-    ALL = ['vs_heads', 'mhksa_parts', 'per_ood', 'combine', 'summary', 'vs_ref', 'vs_ref_pair', 'ensemble', 'merged', 'per_ood_lines', 'per_dataset']
+    ALL = ['vs_heads', 'mhksa_parts', 'per_ood', 'combine', 'summary', 'vs_ref', 'vs_ref_pair', 'ensemble', 'merged', 'main', 'per_ood_lines', 'per_dataset']
     want = ALL if a.figs == 'all' else a.figs.split(',')
     bad = set(want) - set(ALL)
     if bad:
@@ -578,6 +643,8 @@ def main():
         fig_vs_ref_pair(data, a.out, a.compare.split(','))
     if 'ensemble' in want:
         fig_ensemble(data, refs, a.out)
+    if 'main' in want:
+        main_compare(data, refs, a.out, a.main_h)
     if 'merged' in want:
         extras = {}
         for mode, _ in MODES:
