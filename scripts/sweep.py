@@ -9,7 +9,8 @@ r1 = mhksa_evr1, r2 = mhksa_evr2 is the checkpoint MHKSA, r1 = exp_var_ratio is 
 
     python scripts/sweep.py --mode ce --cache <feature cache> [--mult-max 2 3 5 7 10] [--r1 0.6 0.7 0.8 0.9 0.95]
                             [--r2 0.9 0.95 0.99 1.0] [--seeds 0 1 2 3 4] [--gamma-base 2]
--> logs/sweep/sweep_<mode>_<median|gbX>.csv (per seed, per OOD set) and results/markdown/sweep_<mode>_<base>.md
+-> logs/sweep/sweep_<mode>_<median|gbX>_<tag>.csv (per seed, per OOD set) and results/markdown/sweep_<mode>_<base>_<tag>.md
+   (<tag> = the ranges and ratios swept, e.g. m2-3-5-7-10_r1-0.6-0.7-0.8-0.9-0.95_r2-0.9-0.95-0.99-1, or --tag)
 
 The best cell of this grid is picked on the test OOD sets: it is an analysis (where the good region is), not a
 result of the method. Use it as a fixed setting on a dataset it was not picked on (e.g. ImageNet).
@@ -96,6 +97,7 @@ def main():
     ap.add_argument('--seeds', nargs='+', type=int, default=[0, 1, 2, 3, 4])
     ap.add_argument('--H', type=int, default=10)
     ap.add_argument('--out', default='results')
+    ap.add_argument('--tag', default=None, help='file-name suffix (default: from the ranges and ratios, so runs do not overwrite each other)')
     a = ap.parse_args()
     sets_ = [f'data.cache_dir={a.cache}'] + ([f'kernel.gamma_base={a.gamma_base}'] if a.gamma_base else [])
     cfg = load_config(f'configs/c10_r18_{a.mode}.yaml', sets_)
@@ -107,7 +109,9 @@ def main():
     dim = x_all.shape[1]
     r_max = max(a.r1)
     os.makedirs('logs/sweep', exist_ok=True)
-    csv_path = f'logs/sweep/sweep_{a.mode}_{base}.csv'
+    g = lambda v: '-'.join(f'{x:g}' for x in v)
+    tag = a.tag or f'm{g(a.mult_max)}_r1-{g(a.r1)}_r2-{g(a.r2)}'
+    csv_path = f'logs/sweep/sweep_{a.mode}_{base}_{tag}.csv'
     w = csv.writer(open(csv_path, 'w', newline=''))
     w.writerow(['mode', 'base', 'mult_max', 'seed', 'method', 'r1', 'r2', 'dataset', 'FPR95', 'AUROC'])
     rows = []
@@ -157,7 +161,7 @@ def main():
     cells += [(mean(mm, 'Ens_zscore', r1, ''), f'Ens z x{mm:g} r1 {r1:g}') for mm in a.mult_max for r1 in a.r1]
     best = sorted(c for c in cells if not np.isnan(c[0]))[:5]
     L += ['', '## lowest 5 cells (test-picked, analysis only)', ''] + [f'- {n}: {v:.2f}' for v, n in best]
-    md = os.path.join(a.out, 'markdown', f'sweep_{a.mode}_{base}.md')
+    md = os.path.join(a.out, 'markdown', f'sweep_{a.mode}_{base}_{tag}.md')
     os.makedirs(os.path.dirname(md), exist_ok=True)
     open(md, 'w').write('\n'.join(L) + '\n')
     print('\n'.join(L))
