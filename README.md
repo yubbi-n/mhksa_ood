@@ -120,3 +120,13 @@ python scripts/extract_imagenet.py val   --cache ./cache --gpu 0
 python scripts/extract_imagenet.py ood   --cache ./cache --gpu 0 --ood iNaturalist=<dir> SUN=<dir> Places=<dir> Textures=<dir>
 python train.py --config configs/in1k_r50_ce.yaml --set data.cache_dir=./cache kernel.mult_max=10
 ```
+
+## CIFAR-100 (ResNet18, CE)
+The ood-kernel-pca repo has no CIFAR-100 setting, so the backbone is trained here with its resnet18_cifar
+(same OOD sets and folders as CIFAR10, ~/data/ood_data):
+```bash
+python scripts/cifar100.py train   --kpca_repo ~/ood-kernel-pca --data_root ~/data --gpu 0       # ~100 epochs
+python scripts/cifar100.py extract --kpca_repo ~/ood-kernel-pca --data_root ~/data --cache ~/ood-kernel-pca/cache --gpu 0
+python train.py --config configs/c100_r18_ce.yaml --set data.cache_dir=~/ood-kernel-pca/cache kernel.mult_max=10
+python scripts/sweep.py --mode ce --config configs/c100_r18_ce.yaml --cache ~/ood-kernel-pca/cache
+```

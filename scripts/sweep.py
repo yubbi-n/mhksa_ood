@@ -7,7 +7,7 @@ each head's PCA is fitted once with its full spectrum kept, and every ratio is r
 Methods: MHKSA [2] (r1, r2), ensemble z-score [3] (r1), single-head KPCA at the median gamma (r1, H = 1).
 r1 = mhksa_evr1, r2 = mhksa_evr2 is the checkpoint MHKSA, r1 = exp_var_ratio is the checkpoint ensemble / baseline.
 
-    python scripts/sweep.py --mode ce --cache <feature cache> [--mult-max 2 3 5 7 10] [--r1 0.6 0.7 0.8 0.9 0.95]
+    python scripts/sweep.py --mode ce --cache <feature cache> [--config configs/c100_r18_ce.yaml] [--mult-max 2 3 5 7 10] [--r1 0.6 0.7 0.8 0.9 0.95]
                             [--r2 0.9 0.95 0.99 1.0] [--seeds 0 1 2 3 4] [--gamma-base 2]
 -> logs/sweep/sweep_<mode>_<median|gbX>_<tag>.csv (per seed, per OOD set) and results/markdown/sweep_<mode>_<base>_<tag>.md
    (<tag> = the ranges and ratios swept, e.g. m2-3-5-7-10_r1-0.6-0.7-0.8-0.9-0.95_r2-0.9-0.95-0.99-1, or --tag)
@@ -89,6 +89,7 @@ def ens_z(fit, r1, names):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--mode', required=True, choices=['ce', 'supcon'])
+    ap.add_argument('--config', default=None, help='config file (default configs/c10_r18_<mode>.yaml), e.g. configs/c100_r18_ce.yaml')
     ap.add_argument('--cache', required=True, help='feature cache dir (data.cache_dir)')
     ap.add_argument('--gamma-base', default='', help='fixed base gamma (kernel.gamma_base) instead of the median')
     ap.add_argument('--mult-max', nargs='+', type=float, default=[2, 3, 5, 7, 10])
@@ -100,8 +101,10 @@ def main():
     ap.add_argument('--tag', default=None, help='file-name suffix (default: from the ranges and ratios, so runs do not overwrite each other)')
     a = ap.parse_args()
     sets_ = [f'data.cache_dir={a.cache}'] + ([f'kernel.gamma_base={a.gamma_base}'] if a.gamma_base else [])
-    cfg = load_config(f'configs/c10_r18_{a.mode}.yaml', sets_)
+    cfg = load_config(a.config or f'configs/c10_r18_{a.mode}.yaml', sets_)
     base = f'gb{a.gamma_base}' if a.gamma_base else 'median'
+    if cfg.data.in_data != 'CIFAR10':                  # other datasets get their own file names
+        base = f'{cfg.data.in_data.lower()}_{base}'
     f_in, f_out = load_eval(cfg)
     sets = {'ID': f_in, **f_out}
     oods = list(f_out)

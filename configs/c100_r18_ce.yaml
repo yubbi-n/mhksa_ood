@@ -1,0 +1,9 @@
+# CIFAR-100 / ResNet18 / standard (CE) training  -- features: scripts/cifar100.py
+# Same OOD sets and the same ratios as CIFAR10 CE (the paper has no CIFAR-100 setting; nothing is re-tuned here)
+_base_: base.yaml
+data:
+  in_data: CIFAR100
+  train_mode: ce
+model:
+  exp_var_ratio: 0.8
+  mhksa_evr1: 0.9               # 0.9 x 0.9 = 0.81 ~ 0.8
