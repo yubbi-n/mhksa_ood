@@ -17,10 +17,17 @@ class PCA:
     def __init__(self, exp_var_ratio):
         self.ratio = exp_var_ratio
 
-    def fit(self, x):
-        self.mu = x.mean(0)
-        xc = (x - self.mu).astype(np.float64)
-        s, U = np.linalg.eigh(xc.T @ xc)
+    def fit(self, x, chunk=20000):
+        """x: (n, d) array, or a list of (n, d_i) column blocks (= their concatenation, never built in full).
+        The covariance is accumulated in float64 over row chunks: no n x d float64 copy."""
+        blocks = x if isinstance(x, list) else [x]
+        self.mu = np.concatenate([b.mean(0, dtype=np.float64) for b in blocks]).astype(blocks[0].dtype)
+        n = len(blocks[0])
+        C = 0
+        for i in range(0, n, chunk):
+            xc = np.concatenate([b[i:i + chunk] for b in blocks], 1).astype(np.float64) - self.mu
+            C = C + xc.T @ xc
+        s, U = np.linalg.eigh(C)
         self._s, self._U = s[::-1], U[:, ::-1]
         return self._truncate()
 
@@ -124,7 +131,7 @@ class MHKSA:
 
     def fit(self, x, stage1_out=None):
         coords, _ = (stage1_out or self.stage1.transform(x))['mhksa']
-        self.pca2.fit(np.concatenate(coords, 1)).drop_spectrum()
+        self.pca2.fit(list(coords)).drop_spectrum()        # blocks: the n x concat matrix is never built
         self.concat_dim = sum(c.shape[1] for c in coords)
         return self
 

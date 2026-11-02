@@ -4,9 +4,23 @@ import numpy as np
 
 class RFF:
     def __init__(self, gamma, M, dim, rng):
-        self.gamma, self.M = float(gamma), int(M)
-        self.w = (np.sqrt(2 * gamma) * rng.normal(size=(M, dim))).astype(np.float32)
-        self.u = (2 * np.pi * rng.rand(M)).astype(np.float32)
+        self.gamma, self.M, self.dim = float(gamma), int(M), int(dim)
+        self._rng_state = rng.get_state()                   # w, u are redrawn from it when unpickled
+        self._draw(rng)
+
+    def _draw(self, rng):
+        self.w = (np.sqrt(2 * self.gamma) * rng.normal(size=(self.M, self.dim))).astype(np.float32)
+        self.u = (2 * np.pi * rng.rand(self.M)).astype(np.float32)
+
+    def __getstate__(self):                                 # keep checkpoints small: w is M x dim
+        return {k: v for k, v in self.__dict__.items() if k not in ('w', 'u')}
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        if 'w' not in state:                                # (old checkpoints store w, u)
+            rng = np.random.RandomState()
+            rng.set_state(self._rng_state)
+            self._draw(rng)
 
     def __call__(self, x):
         return (np.sqrt(2.0 / self.M) * np.cos(x @ self.w.T + self.u[None, :])).astype(np.float32)
