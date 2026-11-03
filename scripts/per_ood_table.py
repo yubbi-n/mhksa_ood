@@ -41,7 +41,7 @@ def main():
 
     L = [f'# KPCA vs Ours per OOD set — {os.path.basename(os.path.normpath(a.run))}', '',
          f'FPR95 (%) ↓ per OOD set (mean over seeds); Avg = mean over OOD sets ± std over seeds; AUROC (%) ↑. Ours at H = {a.h}.', '',
-         '| | method | ' + ' | '.join(oods) + ' | Avg FPR95 ↓ | Avg AUROC ↑ |', '| --- | --- |' + ' --- |' * (len(oods) + 2)]
+         '| group | method | ' + ' | '.join(oods) + ' | Avg FPR95 ↓ | Avg AUROC ↑ |', '| --- | --- |' + ' --- |' * (len(oods) + 2)]
 
     def line(group, label, per, avg, au):
         return f'| {group} | {label} | ' + ' | '.join(f'{x:.2f}' for x in per) + f' | {avg} | {au} |'
